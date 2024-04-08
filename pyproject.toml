@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "CosmicExplorerSiteSearch"
+version = "0.0.1"
+authors = [
+  {name="Geoffrey Lovelace", email="geoffrey4444@gmail.com"},
+]
+description = "Tool to search for locations for a Cosmic Explorer detector"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "numpy",
+  "rasterio",
+  "shapely",
+  "pyproj >= 3.0",
+  "yapf",
+  "pytest"
+]
+
+[project.urls]
+Homepage = "https://gitlab.com/cosmic-explorer/cess"
+Issues = "https://gitlab.com/cosmic-explorer/cess/-/issues"
