@@ -1,0 +1,23 @@
+# Distributed under the MIT License.
+# See LICENSE for details.
+
+build-and-test:
+  stage: build
+  image: ubuntu
+  script:
+    - cd $CI_BUILDS_DIR
+    - cd $CI_PROJECT_DIR
+    - apt update
+    - apt install -y build-essential
+    - apt install -y python3.10-venv
+    - apt install -y libgdal-dev
+    - apt install -y libproj-dev
+    - python3 -m venv testenv
+    - source ./testenv/bin/activate
+    - pip install -v pyproj
+    - pip install -v -e .
+    - pytest --junitxml=report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
