@@ -21,7 +21,8 @@ def xy_to_lonlat(x, y, projection_wkt_for_xy):
       lat: latitude
     """
     transformer = Transformer.from_crs(projection_wkt_for_xy, "EPSG:4326")
-    return transformer.transform(x, y)
+    lat, lon = transformer.transform(x, y)
+    return lon, lat
 
 
 def lonlat_to_xy(lon, lat, projection_wkt_for_xy):
@@ -41,4 +42,4 @@ def lonlat_to_xy(lon, lat, projection_wkt_for_xy):
       y: y coordinate
     """
     transformer = Transformer.from_crs("EPSG:4326", projection_wkt_for_xy)
-    return transformer.transform(lon, lat)
+    return transformer.transform(lat, lon)

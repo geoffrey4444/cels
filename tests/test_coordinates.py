@@ -37,6 +37,18 @@ def test_xy_to_lonlat():
     assert abs(x_check - x) < eps
     assert abs(y_check - y) < eps
 
+    # Verify transformation for a single, known point
+    # Cal State Fullerton lies at lon,lat =
+    # -117.885278, 33.880556 (via wikipedia). This should convert to
+    # x,y = -1992101.6635348154, 1432029.2332942358 according to
+    # https://epsg.io/transform
+    csuf_x, csuf_y = -1992101.6635348154, 1432029.2332942358
+    csuf_lon, csuf_lat = -117.885278, 33.880556
+    csuf_lon_check, csuf_lat_check = Coordinates.xy_to_lonlat(
+        csuf_x, csuf_y, xy_wkt)
+    assert abs(csuf_lon_check - csuf_lon) < eps
+    assert abs(csuf_lat_check - csuf_lat) < eps
+
 
 def test_lonlat_to_xy():
     """Test conversion of EPSG:5070 to EPSG:4326
@@ -65,3 +77,16 @@ def test_lonlat_to_xy():
     eps = 1.e-6
     assert abs(lon_check - lon) < eps
     assert abs(lat_check - lat) < eps
+
+    # Verify transformation for a single, known point
+    # Cal State Fullerton lies at lon,lat =
+    # -117.885278, 33.880556 (via wikipedia). This should convert to
+    # x,y = -1992101.6635348154, 1432029.2332942358 according to
+    # https://epsg.io/transform
+    csuf_x, csuf_y = -1992101.6635348154, 1432029.2332942358
+    csuf_lon, csuf_lat = -117.885278, 33.880556
+    csuf_x_check, csuf_y_check = Coordinates.lonlat_to_xy(
+        csuf_lon, csuf_lat, xy_wkt)
+    eps_xy = 0.1  # 0.1 meter accuracy
+    assert abs(csuf_x_check - csuf_x) < eps_xy
+    assert abs(csuf_y_check - csuf_y) < eps_xy
