@@ -17,8 +17,10 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [
+  "fiona",
   "numpy",
   "rasterio",
+  "scipy",
   "shapely",
   "pyproj >= 3.0",
   "yapf",
