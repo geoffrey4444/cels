@@ -1,5 +1,7 @@
 # Distributed under the MIT License.
 # See LICENSE for details.
+import fiona
+from fiona import crs
 import numpy as np
 import rasterio as rio
 from rasterio.enums import Resampling
@@ -27,7 +29,8 @@ def detector_coordinates(
     Returns: dictionary containing
       vertex_x
       vertex_y
-      arm_length_meters
+      arm_length_meters = length of each arm in meters
+      dl_for_arms_meters = distance between sample points (hardcoded to 1m)
       opening_angle_degrees
       rotation_angle_degrees
       arms_xy: x,y coordinates (meters) of arm, order (xend ... vertex ... yend)
@@ -67,6 +70,7 @@ def detector_coordinates(
         "vertex_x": vertex_x,
         "vertex_y": vertex_y,
         "arm_length_meters": arm_length_meters,
+        "dl_for_arms_meters": dl_for_arms,
         "opening_angle_degrees": opening_angle_degrees,
         "rotation_angle_degrees": rotation_angle_degrees,
         "arms_xy": arms_xy,
@@ -92,7 +96,7 @@ def detector(
       A dictionary containing the following:
         * "x_arm": LineString representing detector x arm
         * "y_arm": LineString representing detector y arm 
-        * "xy_arm": dict containing sae output as detector_arm_coordinates()
+        * "arms": dict containing same output as detector_arm_coordinates()
     """
     arm_coords = detector_coordinates(arm_length, opening_angle_degrees,
                                       rotation_angle_degrees, vertex_x,
@@ -112,6 +116,57 @@ def detector(
     }
 
 
+def write_shapefile_of_detectors(detectors, output_file_path):
+    """
+    Write a shapefile containing one or more detectors for visualization in GIS.
+    Inputs:
+      detectors: list of detectors, each an output of Detector.detector()
+      output_file_path: path to write output .shp file (include .shp extension)
+    Returns:
+      Nothing
+    Note:
+      other files will be output next to the .shp file
+    """
+    metadata_schema = {
+        "geometry": "LineString",
+        "properties": {
+            "name": "str",
+            "arm_length_meters": "float",
+            "opening_angle_degrees": "float",
+            "rotation_angle_degrees": "float",
+            "vertex_x": "float",
+            "vertex_y": "float",
+        }
+    }
+    shp_driver = "ESRI Shapefile"
+    element_to_write = {}
+    with fiona.open(output_file_path,
+                    "w",
+                    driver="ESRI Shapefile",
+                    schema=metadata_schema,
+                    crs=fiona.crs.from_epsg(5070)) as outfile:
+        for detector in detectors:
+            detector_properties = {
+                "name":
+                "x arm",
+                "arm_length_meters":
+                detector["arms"]["arm_length_meters"],
+                "opening_angle_degrees":
+                detector["arms"]["opening_angle_degrees"],
+                "rotation_angle_degrees":
+                detector["arms"]["rotation_angle_degrees"],
+                "vertex_x":
+                detector["arms"]["vertex_x"],
+                "vertex_y":
+                detector["arms"]["vertex_y"],
+            }
+            element_to_write["geometry"] = detector["x_arm"]
+            element_to_write["properties"] = detector_properties
+            outfile.write(element_to_write)
+            element_to_write["geometry"] = detector["y_arm"]
+            outfile.write(element_to_write)
+
+
 def pixel_data(raster_file_dict, detector):
     """Inputs:
          raster_file_dict: dictionary of open raster files; 
@@ -129,13 +184,13 @@ def pixel_data(raster_file_dict, detector):
     for raster in raster_file_dict:
         result[raster] = {
             "coords": np.array([]),
-            "value": np.array([]),
+            "values": np.array([]),
         }
         raster_file = raster_file_dict[raster]
         nodata_value = raster_file.nodata
 
         result[raster]["coords"] = detector["arms"]["arms_xy"]
-        result[raster]["value"] = np.array([
+        result[raster]["values"] = np.array([
             sample[0]
             for sample in raster_file.sample(result[raster]["coords"])
         ])
