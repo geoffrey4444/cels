@@ -1,5 +1,6 @@
 # Distributed under the MIT License.
 # See LICENSE for details.
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import fiona
 from fiona import crs
 import numpy as np
@@ -13,6 +14,7 @@ from CosmicExplorerSiteSearch import Coordinates
 
 def detector_coordinates(
     arm_length_meters,
+    dl_for_arms_meters,
     opening_angle_degrees,
     rotation_angle_degrees,
     vertex_x,
@@ -39,7 +41,7 @@ def detector_coordinates(
     rotation_angle_rad = rotation_angle_degrees * np.pi / 180.0
 
     # Set up detector (no rotation about vertex yet)
-    dl_for_arms = 1.0  # meters
+    dl_for_arms = dl_for_arms_meters
     x_arm_x_norot = np.arange(0, arm_length_meters + dl_for_arms, dl_for_arms)
     x_arm_y_norot = np.zeros(x_arm_x_norot.shape)
     y_arm_x_norot = np.arange(0, arm_length_meters + dl_for_arms,
@@ -78,7 +80,8 @@ def detector_coordinates(
 
 
 def detector(
-    arm_length,
+    arm_length_meters,
+    dl_for_arms_meters,
     opening_angle_degrees,
     rotation_angle_degrees,
     vertex_x,
@@ -87,6 +90,7 @@ def detector(
     """
     Inputs:
       arm_length: detector arm length (meters)
+      dl_for_arms_meters: spacing between sample points on arms (meters)
       opening_angle_degrees: detector opening angle (degrees)
       rotation_angle_degrees: rotation (degrees) of detector vs. proj x-y axes
       vertex_x: vertex x coordinate (in units of x-y projection, usually meters)
@@ -98,7 +102,8 @@ def detector(
         * "y_arm": LineString representing detector y arm 
         * "arms": dict containing same output as detector_arm_coordinates()
     """
-    arm_coords = detector_coordinates(arm_length, opening_angle_degrees,
+    arm_coords = detector_coordinates(arm_length_meters, dl_for_arms_meters,
+                                      opening_angle_degrees,
                                       rotation_angle_degrees, vertex_x,
                                       vertex_y)
     vert_x = arm_coords["vertex_x"]

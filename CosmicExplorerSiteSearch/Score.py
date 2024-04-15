@@ -1,5 +1,6 @@
 # Distributed under the MIT License.
 # See LICENSE for details.
+import datetime  # hacky profiling
 import numpy as np
 from scipy import optimize
 from scipy.optimize import leastsq as leastsq
@@ -65,7 +66,7 @@ landcover_labels = {
 earth_radius_meters = 6378100
 
 
-def landcover_score(landcover_pixel_data):
+def landcover_score(landcover_pixel_data, dl_for_arms_meters):
     """Input: landcover_pixel_data: 1D array of landcover pixel data, e.g. 
     output from Detector.pixel_data()
 
@@ -75,15 +76,11 @@ def landcover_score(landcover_pixel_data):
     # Just sum over the landcover scores set above for all pixels,
     # and multiply the result by some normalization, so this is comparable
     # to other scores (here the normalization is 1e-5)
-    print(np.unique(landcover_pixel_data, return_counts=True))
-    print(
-        np.sum(
-            np.array(
-                [landcover_score_by_type[v]
-                 for v in landcover_pixel_data])) * 1e-5)
     return np.sum(
-        np.array([landcover_score_by_type[v]
-                  for v in landcover_pixel_data])) * 1e-5
+        np.array([
+            landcover_score_by_type[v] * dl_for_arms_meters
+            for v in landcover_pixel_data
+        ])) * 1e-5
 
 
 def ideal_beamtube_depth(detector):
@@ -308,7 +305,8 @@ def suitability_scores(raster_file_dict, detector, include_pixel_data):
         detector, pixel_data["elevation"]["values"])
     elevation_score = elevation_tilt_scores["elevation"]
     tilt_score = elevation_tilt_scores["tilt"]
-    landcover = landcover_score(pixel_data["landcover"]["values"])
+    landcover = landcover_score(pixel_data["landcover"]["values"],
+                                detector["arms"]["dl_for_arms_meters"])
     total_score = elevation_score + tilt_score + landcover
     if include_pixel_data:
         return {
