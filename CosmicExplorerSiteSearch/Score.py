@@ -1,6 +1,5 @@
 # Distributed under the MIT License.
 # See LICENSE for details.
-import datetime  # hacky profiling
 import numpy as np
 from scipy import optimize
 from scipy.optimize import leastsq as leastsq
