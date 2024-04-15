@@ -157,8 +157,8 @@ def func_to_minimize_by_tilting_detector_plane(
     #                  + y_tilt + dist_from_vertex_y_arm
     #                  + vertex_height - (elevation - elevation_average)
     func_to_minimize = np.concatenate((dist_from_vertex_x, dist_from_vertex_y))
-    func_to_minimize[::dist_from_vertex_x.shape[0] + 1] *= x_tilt
-    func_to_minimize[dist_from_vertex_x.shape[0] + 1::] *= y_tilt
+    func_to_minimize[:dist_from_vertex_x.shape[0]] *= x_tilt
+    func_to_minimize[dist_from_vertex_x.shape[0]:] *= y_tilt
     func_to_minimize += vertex_height_meters
     func_to_minimize -= elevation_pixel_data_average_removed
     return func_to_minimize
