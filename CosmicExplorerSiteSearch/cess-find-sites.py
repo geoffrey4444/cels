@@ -183,13 +183,18 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     print(np.min(result["tilt_score"]), np.max(result["tilt_score"]))
     print(np.min(result["landcover_score"]), np.max(result["landcover_score"]))
     print(np.min(result["total_score"]), np.max(result["total_score"]))
-    best_elevation = np.log10(
-        np.min(np.min(result["elevation_score"], axis=0), axis=0))
-    best_tilt = np.log10(np.min(np.min(result["tilt_score"], axis=0), axis=0))
-    best_landcover = np.log10(
-        np.min(np.min(result["landcover_score"], axis=0), axis=0))
-    best_total = np.log10(np.min(np.min(result["total_score"], axis=0),
-                                 axis=0))
+    best_elevation = np.flip(np.log10(
+        np.min(np.min(result["elevation_score"], axis=0), axis=0)),
+                             axis=0)
+    best_tilt = np.flip(np.log10(
+        np.min(np.min(result["tilt_score"], axis=0), axis=0)),
+                        axis=0)
+    best_landcover = np.flip(np.log10(
+        np.min(np.min(result["landcover_score"], axis=0), axis=0)),
+                             axis=0)
+    best_total = np.flip(np.log10(
+        np.min(np.min(result["total_score"], axis=0), axis=0)),
+                         axis=0)
     print(np.min(best_elevation), np.max(best_elevation))
     print(np.min(best_tilt), np.max(best_tilt))
     print(np.min(best_landcover), np.max(best_landcover))
