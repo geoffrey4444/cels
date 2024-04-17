@@ -289,10 +289,8 @@ def elevation_and_tilt_score(detector, elevation_pixel_data):
 def suitability_scores(raster_file_dict, detector, include_pixel_data):
     """
     Input:
-      raster_file_dict: dictionary of open raster files; 
-                           open the files with rasterio.open() before calling
-                           this function. Must contain rasters with keys
-                           "elevation" and "landcover."
+      raster_file_dict: dictionary of raster file paths; must contain rasters 
+                        with keys "elevation" and "landcover."
       detector: output of Detector.detector()
       include_pixel_data: if true, add a key to the returned scores
                           dictionary holding the pixel_data (e.g. for plotting)
@@ -342,9 +340,7 @@ def score_detector_from_grid(
     Score one detector from a 2D array of detector vertex locations. Note: 
     this function is meant to be called asynchronously.
     Input:
-      raster_file_dict: dictionary of open raster files; 
-                        open the files with rasterio.open() before calling
-                        this function. Must contain rasters with keys
+      raster_file_dict: dictionary of paths to raster files. Must contain keys
                         required by Score.suitability_scores().
       arm_length_meters: detector arm length (meters)
       dl_for_arms_meters: distance between sample points (meters)

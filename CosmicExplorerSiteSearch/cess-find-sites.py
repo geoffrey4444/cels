@@ -88,18 +88,18 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     x_half_pixel_size = 0.5 * elevation_file.transform[0]
     y_half_pixel_size = -0.5 * elevation_file.transform[4]
     elevation_file.close()
-    bounds = rio.coords.BoundingBox(left=detector_xmin - x_half_pixel_size,
-                                    bottom=detector_ymin - y_half_pixel_size,
-                                    right=detector_xmax + x_half_pixel_size,
-                                    top=detector_ymax + y_half_pixel_size)
 
     # Generate grid of x's and y's for detector center
     detector_spacing = 2.0 * x_half_pixel_size * np.round(
         grid_downsample_factor)
     detector_xs = np.arange(detector_xmin, detector_xmax + detector_spacing,
                             detector_spacing)
-    detector_ys = np.arange(detector_xmin, detector_xmax + detector_spacing,
+    detector_ys = np.arange(detector_ymin, detector_ymax + detector_spacing,
                             detector_spacing)
+    bounds = rio.coords.BoundingBox(left=detector_xs[0] - x_half_pixel_size,
+                                    bottom=detector_ys[0] - y_half_pixel_size,
+                                    right=detector_xs[-1] + x_half_pixel_size,
+                                    top=detector_ys[-1] + y_half_pixel_size)
     grid_cols = detector_xs.shape[0]
     grid_rows = detector_ys.shape[0]
     number_of_opening_angles = np.shape(opening_angles)[0]
@@ -142,9 +142,9 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     # Set up a pool
     pool = ProcessPoolExecutor(njobs)
     futures = [
-        pool.submit(Score.score_detector_from_grid, raster_files,
-                    arm_length_meters, dl_for_arms_meters, opening_angle,
-                    rotation_angle, x, y, i, j, row, col)
+        pool.submit(Score.score_detector_from_grid, rasters, arm_length_meters,
+                    dl_for_arms_meters, opening_angle, rotation_angle, x, y, i,
+                    j, row, col)
         for i, opening_angle in enumerate(opening_angles)
         for j, rotation_angle in enumerate(rotation_angles)
         for row, y in enumerate(detector_ys)
@@ -157,37 +157,62 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
         row = score["vertex_row"]
         col = score["vertex_col"]
 
-        result["opening_angle_degrees"][i][j][row][col] = result[
+        result["opening_angle_degrees"][i][j][row][col] = score[
             "opening_angle_degrees"]
-        result["rotation_angle_degrees"][i][j][row][col] = result[
+        result["rotation_angle_degrees"][i][j][row][col] = score[
             "rotation_angle_degrees"]
-        result["vertex_x"][i][j][row][col] = result["vertex_x"]
-        result["vertex_y"][i][j][row][col] = result["vertex_y"]
-        result["elevation_score"][i][j][row][col] = result["elevation_score"]
-        result["tilt_score"][i][j][row][col] = result["tilt_score"]
-        result["landcover_score"][i][j][row][col] = result["landcover_score"]
-        result["total_score"][i][j][row][col] = result["total_score"]
+        result["vertex_x"][i][j][row][col] = score["vertex_x"]
+        result["vertex_y"][i][j][row][col] = score["vertex_y"]
+        result["elevation_score"][i][j][row][col] = score["elevation_score"]
+        result["tilt_score"][i][j][row][col] = score["tilt_score"]
+        result["landcover_score"][i][j][row][col] = score["landcover_score"]
+        result["total_score"][i][j][row][col] = score["total_score"]
 
-    # Output geotiffs
+    # Output geotiffs, finding best (smallest) score over opening and rotation
+    # angles
     out_profile = raster_files["elevation"].profile
     out_transform = rio.transform.from_bounds(bounds.left, bounds.bottom,
                                               bounds.right, bounds.top,
                                               grid_cols, grid_rows)
     out_profile.update(width=grid_cols,
                        height=grid_rows,
-                       transform=out_transform)
+                       transform=out_transform,
+                       dtype=np.float32)
+    print(out_profile)
+    print(np.min(result["elevation_score"]), np.max(result["elevation_score"]))
+    print(np.min(result["tilt_score"]), np.max(result["tilt_score"]))
+    print(np.min(result["landcover_score"]), np.max(result["landcover_score"]))
+    print(np.min(result["total_score"]), np.max(result["total_score"]))
+    best_elevation = np.log10(
+        np.min(np.min(result["elevation_score"], axis=0), axis=0))
+    best_tilt = np.log10(np.min(np.min(result["tilt_score"], axis=0), axis=0))
+    best_landcover = np.log10(
+        np.min(np.min(result["landcover_score"], axis=0), axis=0))
+    best_total = np.log10(np.min(np.min(result["total_score"], axis=0),
+                                 axis=0))
+    print(np.min(best_elevation), np.max(best_elevation))
+    print(np.min(best_tilt), np.max(best_tilt))
+    print(np.min(best_landcover), np.max(best_landcover))
+    print(np.min(best_total), np.max(best_total))
+
+    print(best_elevation.shape)
+    print(best_tilt.shape)
+    print(best_landcover.shape)
+    print(best_total.shape)
+    print(out_transform)
+    print(grid_cols, grid_rows, bounds)
     with rio.open(path_for_output + "/elevation_score.tif", "w",
                   **out_profile) as out_geofile:
-        out_geofile.write(result["elevation_score"])
+        out_geofile.write(best_elevation, 1)
     with rio.open(path_for_output + "/tilt_score.tif", "w",
                   **out_profile) as out_geofile:
-        out_geofile.write(result["tilt_score"])
+        out_geofile.write(best_tilt, 1)
     with rio.open(path_for_output + "/landcover_score.tif", "w",
                   **out_profile) as out_geofile:
-        out_geofile.write(result["landcover_score"])
+        out_geofile.write(best_landcover, 1)
     with rio.open(path_for_output + "/total_score.tif", "w",
                   **out_profile) as out_geofile:
-        out_geofile.write(result["total_score"])
+        out_geofile.write(best_total, 1)
 
     # Output ascii
     detectors = []
@@ -217,15 +242,24 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                         row_text += str(
                             result["total_score"][i][j][row][col]) + "\n"
                         out_ascii.write(row_text)
-
-                        if result["total_score"] <= max_total_score_for_L_out:
+                        detector_scores = {
+                            "elevation_score":
+                            result["elevation_score"][i][j][row][col],
+                            "tilt_score":
+                            result["tilt_score"][i][j][row][col],
+                            "landcover_score":
+                            result["landcover_score"][i][j][row][col],
+                            "total_score":
+                            result["total_score"][i][j][row][col]
+                        }
+                        if result["total_score"][i][j][row][
+                                col] <= max_total_score_for_L_out:
                             detectors.append(
-                                Detector.detector(arm_length_meters,
-                                                  dl_for_arms_meters,
-                                                  opening_angles[i],
-                                                  rotation_angles[j],
-                                                  detector_xs[col],
-                                                  detector_ys[row]))
+                                Detector.detector(
+                                    arm_length_meters, dl_for_arms_meters,
+                                    opening_angles[i], rotation_angles[j],
+                                    detector_xs[col], detector_ys[row],
+                                    detector_scores))
 
     # Finally, write the shape file
     Detector.write_shapefile_of_detectors(

@@ -80,14 +80,13 @@ def detector_coordinates(
     }
 
 
-def detector(
-    arm_length_meters,
-    dl_for_arms_meters,
-    opening_angle_degrees,
-    rotation_angle_degrees,
-    vertex_x,
-    vertex_y,
-):
+def detector(arm_length_meters,
+             dl_for_arms_meters,
+             opening_angle_degrees,
+             rotation_angle_degrees,
+             vertex_x,
+             vertex_y,
+             scores=None):
     """
     Inputs:
       arm_length: detector arm length (meters)
@@ -119,6 +118,7 @@ def detector(
         "x_arm": xarm_line,
         "y_arm": yarm_line,
         "arms": arm_coords,
+        "scores": scores
     }
 
 
@@ -142,6 +142,10 @@ def write_shapefile_of_detectors(detectors, output_file_path):
             "rotation_angle_degrees": "float",
             "vertex_x": "float",
             "vertex_y": "float",
+            "elevation_score": "float",
+            "tilt_score": "float",
+            "landcover_score": "float",
+            "total_score": "float",
         }
     }
     shp_driver = "ESRI Shapefile"
@@ -165,7 +169,24 @@ def write_shapefile_of_detectors(detectors, output_file_path):
                 detector["arms"]["vertex_x"],
                 "vertex_y":
                 detector["arms"]["vertex_y"],
+                "elevation_score":
+                -9999.0,
+                "tilt_score":
+                -9999.0,
+                "landcover_score":
+                -9999.0,
+                "total_score":
+                -9999.0,
             }
+            if detector["scores"] != None:
+                detector_properties["elevation_score"] = detector["scores"][
+                    "elevation_score"]
+                detector_properties["tilt_score"] = detector["scores"][
+                    "tilt_score"]
+                detector_properties["landcover_score"] = detector["scores"][
+                    "landcover_score"]
+                detector_properties["total_score"] = detector["scores"][
+                    "total_score"]
             element_to_write["geometry"] = detector["x_arm"]
             element_to_write["properties"] = detector_properties
             outfile.write(element_to_write)
@@ -175,7 +196,7 @@ def write_shapefile_of_detectors(detectors, output_file_path):
 
 def pixel_data(raster_file_dict, detector):
     """Inputs:
-         raster_file_dict: dictionary of open raster files; 
+         raster_file_dict: dictionary of raster file paths; 
                            open the files with rasterio.open() before calling
                            this function
          detector: output of Detector.detector()
@@ -189,15 +210,12 @@ def pixel_data(raster_file_dict, detector):
     result = {}
     for raster in raster_file_dict:
         result[raster] = {
-            "coords": np.array([]),
+            "coords": detector["arms"]["arms_xy"],
             "values": np.array([]),
         }
-        raster_file = raster_file_dict[raster]
-        nodata_value = raster_file.nodata
-
-        result[raster]["coords"] = detector["arms"]["arms_xy"]
-        result[raster]["values"] = np.array([
-            sample[0]
-            for sample in raster_file.sample(result[raster]["coords"])
-        ])
+        with rio.open(raster_file_dict[raster]) as raster_file:
+            result[raster]["values"] = np.array([
+                sample[0]
+                for sample in raster_file.sample(result[raster]["coords"])
+            ])
     return result
