@@ -23,6 +23,7 @@ def detector_coordinates(
     """
     Inputs:
       arm_length: detector arm length (meters)
+      dl_for_arms_meters: distance between sample points (meters)
       opening_angle_degrees: detector opening angle (degrees)
       rotation_angle_degrees: rotation (degrees) of detector vs. proj x-y axes
       vertex_x: vertex x coordinate (in units of x-y projection, assumed meters)
@@ -32,7 +33,7 @@ def detector_coordinates(
       vertex_x
       vertex_y
       arm_length_meters = length of each arm in meters
-      dl_for_arms_meters = distance between sample points (hardcoded to 1m)
+      dl_for_arms_meters = distance between sample points
       opening_angle_degrees
       rotation_angle_degrees
       arms_xy: x,y coordinates (meters) of arm, order (xend ... vertex ... yend)

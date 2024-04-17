@@ -19,14 +19,18 @@ classifiers = [
 dependencies = [
   "fiona",
   "numpy",
+  "pyproj >= 3.0",
+  "pytest",
   "rasterio",
   "scipy",
   "shapely",
-  "pyproj >= 3.0",
-  "yapf",
-  "pytest"
+  "tqdm",
+  "yapf",  
 ]
 
 [project.urls]
 Homepage = "https://gitlab.com/cosmic-explorer/cess"
 Issues = "https://gitlab.com/cosmic-explorer/cess/-/issues"
+
+[project.scripts]
+cess-find-sites = "CosmicExplorerSiteSearch/FindSites.py"

@@ -1,6 +1,7 @@
 # Distributed under the MIT License.
 # See LICENSE for details.
 import numpy as np
+import rasterio as rio
 from scipy import optimize
 from scipy.optimize import leastsq as leastsq
 
@@ -115,7 +116,7 @@ def ideal_beamtube_depth(detector):
 
 
 def func_to_minimize_by_tilting_detector_plane(
-        params, detector, elevation_pixel_data_average_removed):
+    params, detector, elevation_pixel_data_average_removed):
     """
     Input:
       params: tuple of 3 floats:
@@ -322,3 +323,67 @@ def suitability_scores(raster_file_dict, detector, include_pixel_data):
             "landcover_score": landcover,
             "total_score": total_score
         }
+
+
+def score_detector_from_grid(
+    raster_file_dict,
+    arm_length_meters,
+    dl_for_arms_meters,
+    opening_angle_degrees,
+    rotation_angle_degrees,
+    vertex_x,
+    vertex_y,
+    opening_angle_i,
+    rotation_angle_j,
+    vertex_row,
+    vertex_col,
+):
+    """
+    Score one detector from a 2D array of detector vertex locations. Note: 
+    this function is meant to be called asynchronously.
+    Input:
+      raster_file_dict: dictionary of open raster files; 
+                        open the files with rasterio.open() before calling
+                        this function. Must contain rasters with keys
+                        required by Score.suitability_scores().
+      arm_length_meters: detector arm length (meters)
+      dl_for_arms_meters: distance between sample points (meters)
+      opening_angle_degrees: detector opening angle (degrees)
+      rotation_angle_degrees: rotation (degrees) of detector vs. proj x-y axes
+      vertex_
+      vertex_x: vertex x coordinate (in units of x-y projection, assumed meters)
+      vertex_y: vertex y coordinate (in units of x-y projection, assumed meters)
+      opening_angle_i: which angle corresponds to opening_angle_degrees
+      rotation_angle_j: which angle corresponds to rotation_angle_j
+      vertex_row: row of a grid of vertex positions corresponding to vertex_y
+      vertex_col: column of a grid of vertex positions corresponding to vertex_x      
+    Note: opening_angle_i, rotation_angle_j, vertex_row, vertex_col are provided 
+    only so they can be returned, so results can be assembled in to an array 
+    asynchronously.
+
+    Output:
+      scores: dict containing all input parameters except raster_file_dict,
+              as well as the scores returned by 
+              suitability_scores(include_pixel_data=False).
+    """
+    detector = Detector.detector(arm_length_meters, dl_for_arms_meters,
+                                 opening_angle_degrees, rotation_angle_degrees,
+                                 vertex_x, vertex_y)
+    scores = suitability_scores(raster_file_dict, detector, False)
+    result = {
+        "arm_length_meters": arm_length_meters,
+        "dl_for_arms_meters": dl_for_arms_meters,
+        "opening_angle_degrees": opening_angle_degrees,
+        "rotation_angle_degrees": rotation_angle_degrees,
+        "vertex_x": vertex_x,
+        "vertex_y": vertex_y,
+        "opening_angle_i": opening_angle_i,
+        "rotation_angle_j": rotation_angle_j,
+        "vertex_row": vertex_row,
+        "vertex_col": vertex_col,
+        "elevation_score": scores["elevation_score"],
+        "tilt_score": scores["tilt_score"],
+        "landcover_score": scores["landcover_score"],
+        "total_score": scores["total_score"]
+    }
+    return result
