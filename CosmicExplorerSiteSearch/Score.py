@@ -7,6 +7,97 @@ from scipy.optimize import leastsq as leastsq
 
 from CosmicExplorerSiteSearch import Detector
 
+global_raster_paths = {}
+global_raster_data = {}
+global_raster_transforms = {}
+global_raster_profiles = {}
+global_raster_bounds = {}
+global_raster_wkt = {}
+
+
+def init_global_data(raster_paths):
+    """
+    Inputs:
+        raster_file_dict: dictionary of raster file paths
+    Outputs: None
+    Note: stores raster data in Score.global_raster_paths, 
+    Score.global_raster_data, Score.global_raster_transforms,
+    Score.global_raster_profiles, and Score.global_raster_bounds.
+    """
+    global global_raster_paths
+    global global_raster_data
+    global global_raster_transforms
+    global global_raster_profiles
+    global global_raster_bounds
+    global global_raster_wkt
+    global_raster_paths = raster_paths
+    for key in global_raster_paths.keys():
+        with rio.open(global_raster_paths[key]) as raster_file:
+            global_raster_data[key] = raster_file.read()
+            global_raster_transforms[key] = raster_file.transform
+            global_raster_profiles[key] = raster_file.profile
+            global_raster_bounds[key] = raster_file.bounds
+            global_raster_wkt[key] = raster_file.crs.wkt
+
+
+def pixel_data_from_raster_files(raster_file_dict, detector):
+    """Inputs:
+         raster_file_dict: dictionary of raster file paths
+         detector: output of Detector.detector()
+
+       Returns: 
+         A dictionary keyed by the keys in raster_file_dict. Under each
+         key is a dictionary containing the following:
+           * "coords" = x,y coords of points along detector arms
+           * "values" = value at x,y from this raster
+       Note: this function reads pixel data directly from files on disk.
+       To create pixel data for many detectors, using pixel_data() instead
+       could lead to better performance.
+    """
+    result = {}
+    for raster in raster_file_dict:
+        result[raster] = {
+            "coords": detector["arms"]["arms_xy"],
+            "values": np.array([]),
+        }
+        with rio.open(raster_file_dict[raster]) as raster_file:
+            result[raster]["values"] = np.array([
+                sample[0]
+                for sample in raster_file.sample(result[raster]["coords"])
+            ])
+    return result
+
+
+def pixel_data(detector):
+    """Inputs:         
+         detector: output of Detector.detector()
+
+       Returns: 
+         A dictionary keyed by the keys in raster_file_dict. Under each
+         key is a dictionary containing the following:
+           * "coords" = x,y coords of points along detector arms
+           * "values" = value at x,y from this raster
+       Note: This file computes pixel data for a detector from raster data
+       stored in memory. This approach is suitable for getting pixel data
+       repeatedly for many detectors. To just get pixel data for one or 
+       a few detectors, use pixel_data_from_raster_files().
+       Before calling this function, call init_global_data().
+    """
+    global global_raster_data
+    global global_raster_transforms
+    result = {}
+    for raster in global_raster_paths.keys():
+        result[raster] = {
+            "coords": detector["arms"]["arms_xy"],
+            "values": np.array([]),
+        }
+        rows_and_cols = rio.transform.rowcol(global_raster_transforms[raster],
+                                             detector["arms"]["arms_x"],
+                                             detector["arms"]["arms_y"])
+        result[raster]["values"] = global_raster_data[raster][0][rows_and_cols]
+    return result
+
+
 landcover_score_by_type = {
     0: 1e4,  # ocean
     11: 1e4,  # open water
@@ -68,7 +159,7 @@ earth_radius_meters = 6378100
 
 def landcover_score(landcover_pixel_data, dl_for_arms_meters):
     """Input: landcover_pixel_data: 1D array of landcover pixel data, e.g. 
-    output from Detector.pixel_data()
+    output from pixel_data()
 
     Output: Total landcover score obtained by summing result of passing the 
     value at each pixel into the Score.landcover_score_by_type dict.
@@ -116,7 +207,7 @@ def ideal_beamtube_depth(detector):
 
 
 def func_to_minimize_by_tilting_detector_plane(
-    params, detector, elevation_pixel_data_average_removed):
+        params, detector, elevation_pixel_data_average_removed):
     """
     Input:
       params: tuple of 3 floats:
@@ -126,7 +217,7 @@ def func_to_minimize_by_tilting_detector_plane(
       detector: output of Detector.detector()
       elevation_pixel_data_average_removed: 1D array of elevation pixel data,
                                             e.g. the output of
-                                            Detector.pixel_data() except with
+                                            pixel_data() except with
                                             the average of that output
                                             subtracted out. Do that subtraction
                                             first because this function gets
@@ -166,7 +257,7 @@ def depth_and_tilt(detector, elevation_pixel_data):
     Input:
       detector: output of Detector.detector()
       elevation_pixel_data: 1D array of elevation pixel data, e.g. the output of
-                            Detector.pixel_data()
+                            pixel_data()
 
     Output:
       Dict containing the following:
@@ -198,7 +289,7 @@ def elevation_and_tilt_score(detector, elevation_pixel_data):
       Input:
         detector: output of Detector.detector()
         elevation_pixel_data: 1D array of elevation pixel data, e.g. the 
-                              output of Detector.pixel_data()
+                              output of pixel_data()
 
       Output: Dict containing 2 floats, "elevation_score" and "tilt_score".
               Computes the elevation and tilt scores using Eqs. (4) and (3) of
@@ -286,24 +377,27 @@ def elevation_and_tilt_score(detector, elevation_pixel_data):
     return result
 
 
-def suitability_scores(raster_file_dict, detector, include_pixel_data):
+def suitability_scores(detector, include_pixel_data):
     """
     Input:
-      raster_file_dict: dictionary of raster file paths; must contain rasters 
-                        with keys "elevation" and "landcover."
       detector: output of Detector.detector()
       include_pixel_data: if true, add a key to the returned scores
                           dictionary holding the pixel_data (e.g. for plotting)
     Output:
       scores: dictionary of suitability scores, including "total" which is the 
               sum of the other scores in the dictionary
+    Note: This file uses pixel data for a detector from raster data
+       stored in memory. This approach is suitable for getting pixel data
+       repeatedly for many detectors. To just get pixel data for one or 
+       a few detectors, use pixel_data_from_raster_files().
+       Before calling this function, call init_global_data().
     """
-    pixel_data = Detector.pixel_data(raster_file_dict, detector)
+    pix_data = pixel_data(detector)
     elevation_tilt_scores = elevation_and_tilt_score(
-        detector, pixel_data["elevation"]["values"])
+        detector, pix_data["elevation"]["values"])
     elevation_score = elevation_tilt_scores["elevation"]
     tilt_score = elevation_tilt_scores["tilt"]
-    landcover = landcover_score(pixel_data["landcover"]["values"],
+    landcover = landcover_score(pix_data["landcover"]["values"],
                                 detector["arms"]["dl_for_arms_meters"])
     total_score = elevation_score + tilt_score + landcover
     if include_pixel_data:
@@ -312,7 +406,7 @@ def suitability_scores(raster_file_dict, detector, include_pixel_data):
             "tilt_score": tilt_score,
             "landcover_score": landcover,
             "total_score": total_score,
-            "pixel_data": pixel_data
+            "pixel_data": pix_data
         }
     else:
         return {
@@ -324,7 +418,6 @@ def suitability_scores(raster_file_dict, detector, include_pixel_data):
 
 
 def score_detector_from_grid(
-    raster_file_dict,
     arm_length_meters,
     dl_for_arms_meters,
     opening_angle_degrees,
@@ -340,8 +433,6 @@ def score_detector_from_grid(
     Score one detector from a 2D array of detector vertex locations. Note: 
     this function is meant to be called asynchronously.
     Input:
-      raster_file_dict: dictionary of paths to raster files. Must contain keys
-                        required by Score.suitability_scores().
       arm_length_meters: detector arm length (meters)
       dl_for_arms_meters: distance between sample points (meters)
       opening_angle_degrees: detector opening angle (degrees)
@@ -365,7 +456,7 @@ def score_detector_from_grid(
     detector = Detector.detector(arm_length_meters, dl_for_arms_meters,
                                  opening_angle_degrees, rotation_angle_degrees,
                                  vertex_x, vertex_y)
-    scores = suitability_scores(raster_file_dict, detector, False)
+    scores = suitability_scores(detector, False)
     result = {
         "arm_length_meters": arm_length_meters,
         "dl_for_arms_meters": dl_for_arms_meters,

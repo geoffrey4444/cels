@@ -37,6 +37,8 @@ def detector_coordinates(
       opening_angle_degrees
       rotation_angle_degrees
       arms_xy: x,y coordinates (meters) of arm, order (xend ... vertex ... yend)
+      arms_x: x coordinates (meters) of arm, order (xend ... vertex ... yend)
+      arms_y: y coordinates (meters) of arm, order (xend ... vertex ... yend)
     """
     opening_angle_rad = opening_angle_degrees * np.pi / 180.0
     rotation_angle_rad = rotation_angle_degrees * np.pi / 180.0
@@ -77,6 +79,8 @@ def detector_coordinates(
         "opening_angle_degrees": opening_angle_degrees,
         "rotation_angle_degrees": rotation_angle_degrees,
         "arms_xy": arms_xy,
+        "arms_x": arms_xy[:, 0],
+        "arms_y": arms_xy[:, 1],
     }
 
 
@@ -100,7 +104,7 @@ def detector(arm_length_meters,
       A dictionary containing the following:
         * "x_arm": LineString representing detector x arm
         * "y_arm": LineString representing detector y arm 
-        * "arms": dict containing same output as detector_arm_coordinates()
+        * "arms": dict containing same output as detector_coordinates()
     """
     arm_coords = detector_coordinates(arm_length_meters, dl_for_arms_meters,
                                       opening_angle_degrees,
@@ -192,30 +196,3 @@ def write_shapefile_of_detectors(detectors, output_file_path):
             outfile.write(element_to_write)
             element_to_write["geometry"] = detector["y_arm"]
             outfile.write(element_to_write)
-
-
-def pixel_data(raster_file_dict, detector):
-    """Inputs:
-         raster_file_dict: dictionary of raster file paths; 
-                           open the files with rasterio.open() before calling
-                           this function
-         detector: output of Detector.detector()
-
-       Returns: 
-         A dictionary keyed by the keys in raster_file_dict. Under each
-         key is a dictionary containing the following:
-           * "coords" = x,y coords of points along detector arms
-           * "values" = value at x,y from this raster
-    """
-    result = {}
-    for raster in raster_file_dict:
-        result[raster] = {
-            "coords": detector["arms"]["arms_xy"],
-            "values": np.array([]),
-        }
-        with rio.open(raster_file_dict[raster]) as raster_file:
-            result[raster]["values"] = np.array([
-                sample[0]
-                for sample in raster_file.sample(result[raster]["coords"])
-            ])
-    return result
