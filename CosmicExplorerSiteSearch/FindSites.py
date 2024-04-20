@@ -44,7 +44,8 @@ p.add_argument('--outscore',
                help="Output detector L's if total score < max_score")
 p.add_argument('--outdir', help="Path to output directory (must exist)")
 p.add_argument('--njobs', type=int, help="Number of jobs to run in parallel")
-p.add_argument('--mpi', action='store_true')
+p.add_argument('--mpi', action='store_true', help="Use mpi for parallelization")
+p.add_argument('--nosample', action='store_true', help="Load rasters into RAM")
 args = p.parse_args()
 
 # Determine which parallelism is being used
@@ -65,7 +66,7 @@ else:
 Score.init_global_data({
     "elevation": args.elevation,
     "landcover": args.landcover
-})
+}, args.nosample)
 
 
 def evaluate_region(x_center, y_center, width_meters, height_meters,
@@ -109,7 +110,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     # Start by getting the bounds of the file, and then reducing them by
     # 1.01% of the arm length, to ensure the arms never hit the edge of the
     # raster
-    file_bounds = Score.global_raster_bounds["elevation"]
+    file_bounds = Score.global_raster_bounds
     bounds_safety_length_meters = arm_length_meters * 1.01
     max_bounds = rio.coords.BoundingBox(
         left=file_bounds.left + bounds_safety_length_meters,
@@ -128,17 +129,17 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     # For consistency with the input rasters, reset the desired grid bounds to
     # the elevation map's pixel coordinates
     bounds_rows, bounds_cols = rio.transform.rowcol(
-        Score.global_raster_transforms["elevation"],
+        Score.global_raster_transform,
         [left_desired, right_desired], [bottom_desired, top_desired])
     bounds_xs, bounds_ys = rio.transform.xy(
-        Score.global_raster_transforms["elevation"], bounds_rows, bounds_cols)
+        Score.global_raster_transform, bounds_rows, bounds_cols)
     detector_xmin, detector_xmax = bounds_xs[0], bounds_xs[1]
     detector_ymin, detector_ymax = bounds_ys[0], bounds_ys[1]
 
     # The bounds for output geotiffs are half a pixel width different from
     # the coordinate bounds, since the coordinates come from the pixel center
-    x_half_pixel_size = 0.5 * Score.global_raster_transforms["elevation"][0]
-    y_half_pixel_size = -0.5 * Score.global_raster_transforms["elevation"][4]
+    x_half_pixel_size = 0.5 * Score.global_raster_transform[0]
+    y_half_pixel_size = -0.5 * Score.global_raster_transform[4]
 
     # Generate grid of x's and y's for detector center
     detector_spacing = 2.0 * x_half_pixel_size * np.round(
@@ -236,7 +237,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
 
     # Output geotiffs, finding best (smallest) score over opening and rotation
     # angles
-    out_profile = Score.global_raster_profiles["elevation"]
+    out_profile = Score.global_raster_profile
     out_transform = rio.transform.from_bounds(bounds.left, bounds.bottom,
                                               bounds.right, bounds.top,
                                               grid_cols, grid_rows)
@@ -338,7 +339,7 @@ def evaluate_region_lon_lat(lon_center, lat_center, width_meters,
     """
     # First, open the elevation raster to get the projection to xy
     x_center, y_center = Coordinates.lonlat_to_xy(
-        lon_center, lat_center, Score.global_raster_wkt["elevation"])
+        lon_center, lat_center, Score.global_raster_wkt)
     return evaluate_region(x_center, y_center, width_meters, height_meters,
                            grid_downsample_factor, arm_length_meters,
                            dl_for_arms_meters, opening_angles,

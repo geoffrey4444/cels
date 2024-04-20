@@ -9,13 +9,15 @@ from CosmicExplorerSiteSearch import Detector
 
 global_raster_paths = {}
 global_raster_data = {}
-global_raster_transforms = {}
-global_raster_profiles = {}
-global_raster_bounds = {}
-global_raster_wkt = {}
+global_raster_transform = None
+global_raster_profile = None
+global_raster_bounds = None
+global_raster_wkt = None
+global_no_sample = False
+global_no_data = None
 
 
-def init_global_data(raster_paths):
+def init_global_data(raster_paths, no_sample):
     """
     Inputs:
         raster_file_dict: dictionary of raster file paths
@@ -26,18 +28,25 @@ def init_global_data(raster_paths):
     """
     global global_raster_paths
     global global_raster_data
-    global global_raster_transforms
-    global global_raster_profiles
+    global global_raster_transform
+    global global_raster_profile
     global global_raster_bounds
     global global_raster_wkt
+    global global_no_sample
+    global global_no_data
     global_raster_paths = raster_paths
-    for key in global_raster_paths.keys():
-        with rio.open(global_raster_paths[key]) as raster_file:
-            global_raster_data[key] = raster_file.read()
-            global_raster_transforms[key] = raster_file.transform
-            global_raster_profiles[key] = raster_file.profile
-            global_raster_bounds[key] = raster_file.bounds
-            global_raster_wkt[key] = raster_file.crs.wkt
+    global_no_sample = no_sample
+    with rio.open(global_raster_paths["elevation"]) as geofile:
+        global_no_data = geofile.profile["nodata"]
+        global_raster_wkt = geofile.crs.wkt
+        global_raster_bounds = geofile.bounds
+        global_raster_transform = geofile.transform
+        global_raster_profile = geofile.profile
+    if global_no_sample == True:
+        for key in global_raster_paths.keys():
+            with rio.open(global_raster_paths[key]) as raster_file:
+                global_raster_data[key] = raster_file.read()
+                
 
 
 def pixel_data_from_raster_files(raster_file_dict, detector):
@@ -392,7 +401,27 @@ def suitability_scores(detector, include_pixel_data):
        a few detectors, use pixel_data_from_raster_files().
        Before calling this function, call init_global_data().
     """
-    pix_data = pixel_data(detector)
+    global global_no_data
+    global global_no_sample
+    global global_raster_profiles
+    pix_data = None
+    if (global_no_sample == True):
+        pix_data = pixel_data(detector)
+    else:
+        pix_data = pixel_data_from_raster_files(global_raster_paths, detector)
+    # If L contains pixels in ocean (0) or other country (101-103), assign
+    # nodata to scores and return
+    if ((0 in pix_data["landcover"]["values"])
+            or (101 in pix_data["landcover"]["values"])
+            or (102 in pix_data["landcover"]["values"])
+            or (103 in pix_data["landcover"]["values"])):
+        return {
+            "elevation_score": global_no_data,
+            "tilt_score": global_no_data,
+            "landcover_score": global_no_data,
+            "total_score": global_no_data
+        }
+
     elevation_tilt_scores = elevation_and_tilt_score(
         detector, pix_data["elevation"]["values"])
     elevation_score = elevation_tilt_scores["elevation"]
