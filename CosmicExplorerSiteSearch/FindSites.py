@@ -244,7 +244,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
             result["total_score"][i][j][row][col] = score["total_score"]
 
         tasks_to_go -= 1
-        if tasks_to_go % 100 == 0:
+        if tasks_to_go % 1000 == 0:
             print(
                 str(datetime.now()) + " -- " + str(tasks_to_go) + "/" +
                 str(len(futures)) + " tasks remaining")
