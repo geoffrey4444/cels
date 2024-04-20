@@ -46,7 +46,6 @@ def init_global_data(raster_paths, no_sample):
         for key in global_raster_paths.keys():
             with rio.open(global_raster_paths[key]) as raster_file:
                 global_raster_data[key] = raster_file.read()
-                
 
 
 def pixel_data_from_raster_files(raster_file_dict, detector):
@@ -503,3 +502,24 @@ def score_detector_from_grid(
         "total_score": scores["total_score"]
     }
     return result
+
+
+def score_detector_from_grid_row(arm_length_meters, dl_for_arms_meters,
+                                 opening_angle_degrees, rotation_angle_degrees,
+                                 vertex_y, opening_angle_i, rotation_angle_j,
+                                 vertex_row, number_of_cols, detector_xmin,
+                                 detector_xmax, detector_spacing):
+    """For details, see score_detector_from_grid(). Loop over colums in
+    a row of the detector grid, evaluating the row in serial.
+    Note: list of vertex_x values stored globally, to avoid serializing/sending
+    large amounts of data.
+    """
+    detector_xs = np.arange(detector_xmin, detector_xmax + detector_spacing,
+                            detector_spacing)
+    scores_this_row = [{}] * number_of_cols
+    for col in range(0, number_of_cols, 1):
+        scores_this_row[col] = score_detector_from_grid(
+            arm_length_meters, dl_for_arms_meters, opening_angle_degrees,
+            rotation_angle_degrees, detector_xs[col], vertex_y,
+            opening_angle_i, rotation_angle_j, vertex_row, col)
+    return scores_this_row

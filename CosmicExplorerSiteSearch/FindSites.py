@@ -44,7 +44,9 @@ p.add_argument('--outscore',
                help="Output detector L's if total score < max_score")
 p.add_argument('--outdir', help="Path to output directory (must exist)")
 p.add_argument('--njobs', type=int, help="Number of jobs to run in parallel")
-p.add_argument('--mpi', action='store_true', help="Use mpi for parallelization")
+p.add_argument('--mpi',
+               action='store_true',
+               help="Use mpi for parallelization")
 p.add_argument('--nosample', action='store_true', help="Load rasters into RAM")
 args = p.parse_args()
 
@@ -63,10 +65,11 @@ else:
 
 # Create dictionary of raster data and transforms. This happens once on each
 # process.
-Score.init_global_data({
-    "elevation": args.elevation,
-    "landcover": args.landcover
-}, args.nosample)
+Score.init_global_data(
+    {
+        "elevation": args.elevation,
+        "landcover": args.landcover
+    }, args.nosample)
 
 
 def evaluate_region(x_center, y_center, width_meters, height_meters,
@@ -129,12 +132,14 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     # For consistency with the input rasters, reset the desired grid bounds to
     # the elevation map's pixel coordinates
     bounds_rows, bounds_cols = rio.transform.rowcol(
-        Score.global_raster_transform,
-        [left_desired, right_desired], [bottom_desired, top_desired])
-    bounds_xs, bounds_ys = rio.transform.xy(
-        Score.global_raster_transform, bounds_rows, bounds_cols)
+        Score.global_raster_transform, [left_desired, right_desired],
+        [bottom_desired, top_desired])
+    bounds_xs, bounds_ys = rio.transform.xy(Score.global_raster_transform,
+                                            bounds_rows, bounds_cols)
     detector_xmin, detector_xmax = bounds_xs[0], bounds_xs[1]
     detector_ymin, detector_ymax = bounds_ys[0], bounds_ys[1]
+    print("Detector vertex xmin, xmax, ymin, ymax")
+    print(detector_xmin, detector_xmax, detector_ymin, detector_ymax)
 
     # The bounds for output geotiffs are half a pixel width different from
     # the coordinate bounds, since the coordinates come from the pixel center
@@ -187,6 +192,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
         np.zeros((number_of_opening_angles, number_of_rotation_angles,
                   grid_rows, grid_cols)),
     }
+    print("Shape of total score array:")
+    print(result["total_score"].shape)
 
     # Set up a pool
     pool = None
@@ -196,39 +203,48 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     else:
         print(str(datetime.now()) + " -- Setting up process")
         pool = ProcessPoolExecutor(njobs)
+
+    tasks_to_go = number_of_opening_angles * number_of_rotation_angles
+    tasks_to_go *= grid_rows
+    print(
+        str(datetime.now()) + " -- " + str(tasks_to_go) + "/" +
+        str(tasks_to_go) + " tasks remaining")
+
+    # Submit futures
     futures = [
-        pool.submit(Score.score_detector_from_grid, arm_length_meters,
-                    dl_for_arms_meters, opening_angle, rotation_angle, x, y, i,
-                    j, row, col)
+        pool.submit(Score.score_detector_from_grid_row, arm_length_meters,
+                    dl_for_arms_meters, opening_angle, rotation_angle, y, i, j,
+                    row, grid_cols, detector_xmin, detector_xmax,
+                    detector_spacing)
         for i, opening_angle in enumerate(opening_angles)
         for j, rotation_angle in enumerate(rotation_angles)
         for row, y in enumerate(detector_ys)
-        for col, x in enumerate(detector_xs)
     ]
-    tasks_to_go = len(futures)
-    print(str(tasks_to_go) + "/" + str(len(futures)) + " tasks remaining")
-    time_last_logged_update = datetime.now()
-    for future in as_completed(futures):
-        score = future.result()
-        i = score["opening_angle_i"]
-        j = score["rotation_angle_j"]
-        row = score["vertex_row"]
-        col = score["vertex_col"]
 
-        result["opening_angle_degrees"][i][j][row][col] = score[
-            "opening_angle_degrees"]
-        result["rotation_angle_degrees"][i][j][row][col] = score[
-            "rotation_angle_degrees"]
-        result["vertex_x"][i][j][row][col] = score["vertex_x"]
-        result["vertex_y"][i][j][row][col] = score["vertex_y"]
-        result["elevation_score"][i][j][row][col] = score["elevation_score"]
-        result["tilt_score"][i][j][row][col] = score["tilt_score"]
-        result["landcover_score"][i][j][row][col] = score["landcover_score"]
-        result["total_score"][i][j][row][col] = score["total_score"]
+    print(str(datetime.now()) + " -- all tasks submitted. Awaiting results.")
+    for future in as_completed(futures):
+        scores_this_row = future.result()
+        for score in scores_this_row:
+            i = score["opening_angle_i"]
+            j = score["rotation_angle_j"]
+            row = score["vertex_row"]
+            col = score["vertex_col"]
+
+            result["opening_angle_degrees"][i][j][row][col] = score[
+                "opening_angle_degrees"]
+            result["rotation_angle_degrees"][i][j][row][col] = score[
+                "rotation_angle_degrees"]
+            result["vertex_x"][i][j][row][col] = score["vertex_x"]
+            result["vertex_y"][i][j][row][col] = score["vertex_y"]
+            result["elevation_score"][i][j][row][col] = score[
+                "elevation_score"]
+            result["tilt_score"][i][j][row][col] = score["tilt_score"]
+            result["landcover_score"][i][j][row][col] = score[
+                "landcover_score"]
+            result["total_score"][i][j][row][col] = score["total_score"]
 
         tasks_to_go -= 1
-        time_this_update = datetime.now()
-        if (time_this_update - time_last_logged_update).total_seconds() > 60.0:
+        if tasks_to_go % 100 == 0:
             print(
                 str(datetime.now()) + " -- " + str(tasks_to_go) + "/" +
                 str(len(futures)) + " tasks remaining")
@@ -338,8 +354,8 @@ def evaluate_region_lon_lat(lon_center, lat_center, width_meters,
       Same as output of evaluate_region().
     """
     # First, open the elevation raster to get the projection to xy
-    x_center, y_center = Coordinates.lonlat_to_xy(
-        lon_center, lat_center, Score.global_raster_wkt)
+    x_center, y_center = Coordinates.lonlat_to_xy(lon_center, lat_center,
+                                                  Score.global_raster_wkt)
     return evaluate_region(x_center, y_center, width_meters, height_meters,
                            grid_downsample_factor, arm_length_meters,
                            dl_for_arms_meters, opening_angles,
