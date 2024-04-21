@@ -195,64 +195,70 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     print("Shape of total score array:")
     print(result["total_score"].shape)
 
-    # Set up a pool
-    pool = None
-    if args.mpi:
-        print(str(datetime.now()) + " -- Setting up MPI pool")
-        pool = MPIPoolExecutor()
-    else:
-        print(str(datetime.now()) + " -- Setting up process")
-        pool = ProcessPoolExecutor(njobs)
+    total_tasks = number_of_opening_angles * number_of_rotation_angles
+    total_tasks *= grid_rows * grid_cols
+    tasks_each_round = 100000
+    tasks_to_submit = total_tasks
+    tasks_for_this_round = 0
+    params_for_futures = []
+    for i, opening_angle in enumerate(opening_angles):
+        for j, rotation_angle in enumerate(rotation_angles):
+            for row, y in enumerate(detector_ys):
+                for col, x in enumerate(detector_xs):
+                    params_for_futures.append(
+                        (Score.score_detector_from_grid, arm_length_meters,
+                         dl_for_arms_meters, opening_angle, rotation_angle, x,
+                         y, i, j, row, col))
+                    tasks_for_this_round += 1
+                    tasks_to_submit -= 1
+                    if (tasks_for_this_round
+                            >= tasks_each_round) or tasks_to_submit <= 0:
+                        print(
+                            str(datetime.now()) + " -- Submitting " +
+                            str(tasks_for_this_round) + " tasks")
+                        with ProcessPoolExecutor(njobs) as pool:
+                            futures = [
+                                pool.submit(*params)
+                                for params in params_for_futures
+                            ]
+                            for future in as_completed(futures):
+                                score = future.result()
+                                score_i = score["opening_angle_i"]
+                                score_j = score["rotation_angle_j"]
+                                score_row = score["vertex_row"]
+                                score_col = score["vertex_col"]
 
-    tasks_to_go = number_of_opening_angles * number_of_rotation_angles
-    tasks_to_go *= grid_rows
-    print(
-        str(datetime.now()) + " -- " + str(tasks_to_go) + "/" +
-        str(tasks_to_go) + " tasks remaining")
-
-    # Submit futures
-    futures = [
-        pool.submit(Score.score_detector_from_grid_row, arm_length_meters,
-                    dl_for_arms_meters, opening_angle, rotation_angle, y, i, j,
-                    row, grid_cols, detector_xmin, detector_xmax,
-                    detector_spacing)
-        for i, opening_angle in enumerate(opening_angles)
-        for j, rotation_angle in enumerate(rotation_angles)
-        for row, y in enumerate(detector_ys)
-    ]
-
-    print(str(datetime.now()) + " -- all tasks submitted. Awaiting results.")
-    for future in as_completed(futures):
-        scores_this_row = future.result()
-        for score in scores_this_row:
-            i = score["opening_angle_i"]
-            j = score["rotation_angle_j"]
-            row = score["vertex_row"]
-            col = score["vertex_col"]
-
-            result["opening_angle_degrees"][i][j][row][col] = score[
-                "opening_angle_degrees"]
-            result["rotation_angle_degrees"][i][j][row][col] = score[
-                "rotation_angle_degrees"]
-            result["vertex_x"][i][j][row][col] = score["vertex_x"]
-            result["vertex_y"][i][j][row][col] = score["vertex_y"]
-            result["elevation_score"][i][j][row][col] = score[
-                "elevation_score"]
-            result["tilt_score"][i][j][row][col] = score["tilt_score"]
-            result["landcover_score"][i][j][row][col] = score[
-                "landcover_score"]
-            result["total_score"][i][j][row][col] = score["total_score"]
-
-        tasks_to_go -= 1
-        if tasks_to_go % 1000 == 0:
-            print(
-                str(datetime.now()) + " -- " + str(tasks_to_go) + "/" +
-                str(len(futures)) + " tasks remaining")
-    if args.mpi:
-        pool.shutdown()
+                                result["opening_angle_degrees"][score_i][
+                                    score_j][score_row][score_col] = score[
+                                        "opening_angle_degrees"]
+                                result["rotation_angle_degrees"][score_i][
+                                    score_j][score_row][score_col] = score[
+                                        "rotation_angle_degrees"]
+                                result["vertex_x"][score_i][score_j][
+                                    score_row][score_col] = score["vertex_x"]
+                                result["vertex_y"][score_i][score_j][
+                                    score_row][score_col] = score["vertex_y"]
+                                result["elevation_score"][score_i][score_j][
+                                    score_row][score_col] = score[
+                                        "elevation_score"]
+                                result["tilt_score"][score_i][score_j][
+                                    score_row][score_col] = score["tilt_score"]
+                                result["landcover_score"][score_i][score_j][
+                                    score_row][score_col] = score[
+                                        "landcover_score"]
+                                result["total_score"][score_i][score_j][
+                                    score_row][score_col] = score[
+                                        "total_score"]
+                        print(
+                            str(datetime.now()) + " -- Completed " +
+                            str(tasks_for_this_round) + " tasks (" +
+                            str(tasks_to_submit) + " remaining)")
+                        params_for_futures = []
+                        tasks_for_this_round = 0
 
     # Output geotiffs, finding best (smallest) score over opening and rotation
     # angles
+    print(str(datetime.now()) + " -- Outputting geotiffs")
     out_profile = Score.global_raster_profile
     out_transform = rio.transform.from_bounds(bounds.left, bounds.bottom,
                                               bounds.right, bounds.top,
@@ -267,9 +273,13 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     best_tilt = np.flip(np.log10(
         np.min(np.min(result["tilt_score"], axis=0), axis=0)),
                         axis=0)
-    best_landcover = np.flip(np.log10(
-        np.min(np.min(result["landcover_score"], axis=0), axis=0)),
-                             axis=0)
+    # Add 1.e-15 for the unlikely event that arm only touches spaces
+    # with zero landcover
+    eps = 1e-15
+    best_landcover = np.flip(
+        np.log10(eps +
+                 np.min(np.min(result["landcover_score"], axis=0), axis=0)),
+        axis=0)
     best_total = np.flip(np.log10(
         np.min(np.min(result["total_score"], axis=0), axis=0)),
                          axis=0)
@@ -287,7 +297,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                   **out_profile) as out_geofile:
         out_geofile.write(best_total, 1)
 
-    # Output ascii
+    # Output csv
+    print(str(datetime.now()) + " -- Outputting csv")
     detectors = []
     legend = "#opening_angle rotation_angle vertex_x vertex_y elevation_score"
     legend += " tilt_score landcover_score total_score\n"
@@ -333,10 +344,12 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                                     opening_angles[i], rotation_angles[j],
                                     detector_xs[col], detector_ys[row],
                                     detector_scores))
-
+    
     # Finally, write the shape file
+    print(str(datetime.now()) + " -- Outputting shapefiles")
     Detector.write_shapefile_of_detectors(
         detectors, path_for_output + "/best_detectors.shp")
+    print(str(datetime.now()) + " -- Complete!")
 
 
 def evaluate_region_lon_lat(lon_center, lat_center, width_meters,
