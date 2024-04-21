@@ -4,6 +4,7 @@ import argparse
 from datetime import datetime
 import numpy as np
 import rasterio as rio
+import time
 from tqdm import tqdm
 
 from CosmicExplorerSiteSearch import Coordinates, Detector, Score
@@ -197,7 +198,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
 
     total_tasks = number_of_opening_angles * number_of_rotation_angles
     total_tasks *= grid_rows * grid_cols
-    tasks_each_round = 100000
+    tasks_each_round = 1000000
     tasks_to_submit = total_tasks
     tasks_for_this_round = 0
     params_for_futures = []
@@ -255,6 +256,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                             str(tasks_to_submit) + " remaining)")
                         params_for_futures = []
                         tasks_for_this_round = 0
+                        time.sleep(5)
 
     # Output geotiffs, finding best (smallest) score over opening and rotation
     # angles
