@@ -1,5 +1,6 @@
 # Distributed under the MIT License.
 # See LICENSE for details.
+from multiprocessing import shared_memory
 import numpy as np
 import rasterio as rio
 from scipy import optimize
@@ -17,13 +18,13 @@ global_no_sample = False
 global_no_data = None
 
 
-def init_global_data(raster_paths, no_sample):
+def init_global_data(raster_paths):
     """
     Inputs:
         raster_file_dict: dictionary of raster file paths
     Outputs: None
     Note: stores raster data in Score.global_raster_paths, 
-    Score.global_raster_data, Score.global_raster_transforms,
+    Score.global_raster_data, Score.global_raster_transform,
     Score.global_raster_profiles, and Score.global_raster_bounds.
     """
     global global_raster_paths
@@ -32,20 +33,14 @@ def init_global_data(raster_paths, no_sample):
     global global_raster_profile
     global global_raster_bounds
     global global_raster_wkt
-    global global_no_sample
     global global_no_data
     global_raster_paths = raster_paths
-    global_no_sample = no_sample
     with rio.open(global_raster_paths["elevation"]) as geofile:
         global_no_data = geofile.profile["nodata"]
         global_raster_wkt = geofile.crs.wkt
         global_raster_bounds = geofile.bounds
         global_raster_transform = geofile.transform
         global_raster_profile = geofile.profile
-    if global_no_sample == True:
-        for key in global_raster_paths.keys():
-            with rio.open(global_raster_paths[key]) as raster_file:
-                global_raster_data[key] = raster_file.read()
 
 
 def pixel_data_from_raster_files(raster_file_dict, detector):
@@ -76,9 +71,12 @@ def pixel_data_from_raster_files(raster_file_dict, detector):
     return result
 
 
-def pixel_data(detector):
+def pixel_data(detector, raster_info):
     """Inputs:         
          detector: output of Detector.detector()
+         raster_info: dict with keys for each raster stored in memory. Each key
+                   stores a dict containing array shape, dtype, nbytes
+                   (get each with the corresponding numpy array methods)
 
        Returns: 
          A dictionary keyed by the keys in raster_file_dict. Under each
@@ -91,18 +89,23 @@ def pixel_data(detector):
        a few detectors, use pixel_data_from_raster_files().
        Before calling this function, call init_global_data().
     """
-    global global_raster_data
-    global global_raster_transforms
+    global global_raster_transform
     result = {}
     for raster in global_raster_paths.keys():
         result[raster] = {
             "coords": detector["arms"]["arms_xy"],
             "values": np.array([]),
         }
-        rows_and_cols = rio.transform.rowcol(global_raster_transforms[raster],
+        rows_and_cols = rio.transform.rowcol(global_raster_transform,
                                              detector["arms"]["arms_x"],
                                              detector["arms"]["arms_y"])
-        result[raster]["values"] = global_raster_data[raster][0][rows_and_cols]
+
+        raster_shm = shared_memory.SharedMemory(name="shm_" + raster)
+        shared_raster_data = np.ndarray(raster_info[raster]["shape"],
+                                        dtype=raster_info[raster]["dtype"],
+                                        buffer=raster_shm.buf)
+        result[raster]["values"] = shared_raster_data[0][rows_and_cols]
+        raster_shm.close()
     return result
 
 
@@ -385,12 +388,15 @@ def elevation_and_tilt_score(detector, elevation_pixel_data):
     return result
 
 
-def suitability_scores(detector, include_pixel_data):
+def suitability_scores(detector, include_pixel_data, raster_info):
     """
     Input:
       detector: output of Detector.detector()
       include_pixel_data: if true, add a key to the returned scores
                           dictionary holding the pixel_data (e.g. for plotting)
+      raster_info: dict with keys for each raster stored in memory. Each key
+                   stores a dict containing array shape, dtype, nbytes
+                   (get each with the corresponding numpy array methods)
     Output:
       scores: dictionary of suitability scores, including "total" which is the 
               sum of the other scores in the dictionary
@@ -401,13 +407,8 @@ def suitability_scores(detector, include_pixel_data):
        Before calling this function, call init_global_data().
     """
     global global_no_data
-    global global_no_sample
     global global_raster_profiles
-    pix_data = None
-    if (global_no_sample == True):
-        pix_data = pixel_data(detector)
-    else:
-        pix_data = pixel_data_from_raster_files(global_raster_paths, detector)
+    pix_data = pixel_data(detector, raster_info)
     # If L contains pixels in ocean (0) or other country (101-103), assign
     # nodata to scores and return
     if ((0 in pix_data["landcover"]["values"])
@@ -446,18 +447,11 @@ def suitability_scores(detector, include_pixel_data):
         }
 
 
-def score_detector_from_grid(
-    arm_length_meters,
-    dl_for_arms_meters,
-    opening_angle_degrees,
-    rotation_angle_degrees,
-    vertex_x,
-    vertex_y,
-    opening_angle_i,
-    rotation_angle_j,
-    vertex_row,
-    vertex_col,
-):
+def score_detector_from_grid(arm_length_meters, dl_for_arms_meters,
+                             opening_angle_degrees, rotation_angle_degrees,
+                             vertex_x, vertex_y, opening_angle_i,
+                             rotation_angle_j, vertex_row, vertex_col,
+                             raster_info):
     """
     Score one detector from a 2D array of detector vertex locations. Note: 
     this function is meant to be called asynchronously.
@@ -472,7 +466,10 @@ def score_detector_from_grid(
       opening_angle_i: which angle corresponds to opening_angle_degrees
       rotation_angle_j: which angle corresponds to rotation_angle_j
       vertex_row: row of a grid of vertex positions corresponding to vertex_y
-      vertex_col: column of a grid of vertex positions corresponding to vertex_x      
+      vertex_col: column of a grid of vertex positions corresponding to vertex_x
+      raster_info: dict with keys for each raster stored in memory. Each key
+                   stores a dict containing array shape, dtype, nbytes
+                   (get each with the corresponding numpy array methods)     
     Note: opening_angle_i, rotation_angle_j, vertex_row, vertex_col are provided 
     only so they can be returned, so results can be assembled in to an array 
     asynchronously.
@@ -485,7 +482,7 @@ def score_detector_from_grid(
     detector = Detector.detector(arm_length_meters, dl_for_arms_meters,
                                  opening_angle_degrees, rotation_angle_degrees,
                                  vertex_x, vertex_y)
-    scores = suitability_scores(detector, False)
+    scores = suitability_scores(detector, False, raster_info)
     result = {
         "arm_length_meters": arm_length_meters,
         "dl_for_arms_meters": dl_for_arms_meters,

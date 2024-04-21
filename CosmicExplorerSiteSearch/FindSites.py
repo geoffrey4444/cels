@@ -2,6 +2,7 @@
 # See LICESNSE for details.
 import argparse
 from datetime import datetime
+from multiprocessing import shared_memory
 import numpy as np
 import rasterio as rio
 import time
@@ -48,7 +49,6 @@ p.add_argument('--njobs', type=int, help="Number of jobs to run in parallel")
 p.add_argument('--mpi',
                action='store_true',
                help="Use mpi for parallelization")
-p.add_argument('--nosample', action='store_true', help="Load rasters into RAM")
 args = p.parse_args()
 
 # Determine which parallelism is being used
@@ -66,18 +66,17 @@ else:
 
 # Create dictionary of raster data and transforms. This happens once on each
 # process.
-Score.init_global_data(
-    {
-        "elevation": args.elevation,
-        "landcover": args.landcover
-    }, args.nosample)
+Score.init_global_data({
+    "elevation": args.elevation,
+    "landcover": args.landcover
+})
 
 
 def evaluate_region(x_center, y_center, width_meters, height_meters,
                     grid_downsample_factor, arm_length_meters,
                     dl_for_arms_meters, opening_angles,
                     number_of_rotation_angles, max_total_score_for_L_out,
-                    path_for_output, njobs):
+                    path_for_output, njobs, raster_info):
     """Evaluate the suitability of a 2D grid of detectors placed in a 
     rectangular region such that they are evenly spaced horizontally
     and vertically. Uses the projection of the provided elevation map for
@@ -99,6 +98,9 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
       path_for_output: string pointing to a directory where output will be
                        written (must exist).
       njobs: number of jobs to run in parallel
+      raster_info: dict with keys for each raster stored in memory. Each key
+                   stores a dict containing array shape, dtype, nbytes
+                   (get eachw ith the corresponding numpy array methods)
     Output:
       * One geotiff for each score returned for each detector, with pixel
         values equal to the best score at each x,y point, maximizing over
@@ -209,7 +211,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                     params_for_futures.append(
                         (Score.score_detector_from_grid, arm_length_meters,
                          dl_for_arms_meters, opening_angle, rotation_angle, x,
-                         y, i, j, row, col))
+                         y, i, j, row, col, raster_info))
                     tasks_for_this_round += 1
                     tasks_to_submit -= 1
                     if (tasks_for_this_round
@@ -256,7 +258,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                             str(tasks_to_submit) + " remaining)")
                         params_for_futures = []
                         tasks_for_this_round = 0
-                        time.sleep(5)
+                        time.sleep(30)
 
     # Output geotiffs, finding best (smallest) score over opening and rotation
     # angles
@@ -372,7 +374,8 @@ def evaluate_region_lon_lat(lon_center, lat_center, width_meters,
                             height_meters, grid_downsample_factor,
                             arm_length_meters, dl_for_arms_meters,
                             opening_angles, number_of_rotation_angles,
-                            max_total_score_for_L_out, path_for_output, njobs):
+                            max_total_score_for_L_out, path_for_output, njobs,
+                            raster_info):
     """Wrapper for evaluate_region() that takes lon, lat instead of x,y for the
     center of the rectangular search region.
     Input:
@@ -389,12 +392,78 @@ def evaluate_region_lon_lat(lon_center, lat_center, width_meters,
                            grid_downsample_factor, arm_length_meters,
                            dl_for_arms_meters, opening_angles,
                            number_of_rotation_angles,
-                           max_total_score_for_L_out, path_for_output, njobs)
+                           max_total_score_for_L_out, path_for_output, njobs,
+                           raster_info)
 
 
 if __name__ == '__main__':
+    # First, look for leftover shared memory and delete if it already exists
+    try:
+        shm_elevation = shared_memory.SharedMemory("shm_elevation",
+                                                   create=False)
+        shm_elevation.unlink()
+        print("Cleaned up existing shared memory for elevation")
+    except:
+        print("No existing shared memory for elevation to clean up")
+    try:
+        shm_landcover = shared_memory.SharedMemory("shm_landcover",
+                                                   create=False)
+        shm_landcover.unlink()
+        print("Cleaned up existing shared memory for landcover")
+    except:
+        print("No existing shared memory for landcover to clean up")
+    raster_info = {"elevation": {}, "landcover": {}}
+    print(str(datetime.now()) + " -- Reading elevation data")
+    elev_file = rio.open(args.elevation)
+    elev = elev_file.read()
+    raster_info["elevation"] = {
+        "shape": elev.shape,
+        "dtype": elev.dtype,
+        "nbytes": elev.nbytes
+    }
+
+    elev_shm = shared_memory.SharedMemory(
+        create=True,
+        name="shm_elevation",
+        size=raster_info["elevation"]["nbytes"])
+
+    print(
+        str(datetime.now()) + " -- Copying elevation data into shared memory")
+    elev_shared = np.ndarray(raster_info["elevation"]["shape"],
+                             dtype=raster_info["elevation"]["dtype"],
+                             buffer=elev_shm.buf)
+    elev_shared[:] = elev[:]
+    elev_file.close()
+
+    print(str(datetime.now()) + " -- Reading landcover data")
+    lc_file = rio.open(args.landcover)
+    lc = lc_file.read()
+    raster_info["landcover"] = {
+        "shape": lc.shape,
+        "dtype": lc.dtype,
+        "nbytes": lc.nbytes
+    }
+
+    lc_shm = shared_memory.SharedMemory(
+        create=True,
+        name="shm_landcover",
+        size=raster_info["landcover"]["nbytes"])
+
+    print(
+        str(datetime.now()) + " -- Copying landcover data into shared memory")
+    lc_shared = np.ndarray(raster_info["landcover"]["shape"],
+                           dtype=raster_info["landcover"]["dtype"],
+                           buffer=lc_shm.buf)
+    lc_shared[:] = lc[:]
+    lc_file.close()
+
+    print(str(datetime.now()) + " -- Starting evaluation")
     evaluate_region_lon_lat(args.lon, args.lat, args.width, args.height,
                             args.N, args.arm_length, args.dl,
                             np.array(args.opening_angle),
                             np.array(args.rotation_angles), args.outscore,
-                            args.outdir, args.njobs)
+                            args.outdir, args.njobs, raster_info)
+    elev_shm.close()
+    elev_shm.unlink()
+    lc_shm.close()
+    lc_shm.unlink()
