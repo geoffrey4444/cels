@@ -266,6 +266,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     out_profile.update(width=grid_cols,
                        height=grid_rows,
                        transform=out_transform,
+                       nodata=Score.global_no_data,
                        dtype=np.float32)
     best_elevation = np.flip(np.log10(
         np.min(np.min(result["elevation_score"], axis=0), axis=0)),
@@ -283,6 +284,19 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     best_total = np.flip(np.log10(
         np.min(np.min(result["total_score"], axis=0), axis=0)),
                          axis=0)
+
+    # Undo log of nodata points, replace with actual no data value
+    no_data = Score.global_no_data
+    log10_no_data = np.log10(no_data)
+    eps_for_log = 1.e-6
+    print("No data = " + str(no_data) + " log10(no data) = " +
+          str(log10_no_data))
+    best_elevation[np.abs(best_elevation -
+                          log10_no_data) < eps_for_log] = no_data
+    best_tilt[np.abs(best_tilt - log10_no_data) < eps_for_log] = no_data
+    best_landcover[np.abs(best_landcover -
+                          log10_no_data) < eps_for_log] = no_data
+    best_total[np.abs(best_total - log10_no_data) < eps_for_log] = no_data
 
     with rio.open(path_for_output + "/elevation_score.tif", "w",
                   **out_profile) as out_geofile:
@@ -344,7 +358,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                                     opening_angles[i], rotation_angles[j],
                                     detector_xs[col], detector_ys[row],
                                     detector_scores))
-    
+
     # Finally, write the shape file
     print(str(datetime.now()) + " -- Outputting shapefiles")
     Detector.write_shapefile_of_detectors(
