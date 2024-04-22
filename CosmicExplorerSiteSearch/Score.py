@@ -411,7 +411,7 @@ def suitability_scores(detector, include_pixel_data):
     # If L contains pixels in ocean (0) or other country (101-103), assign
     # nodata to scores and return
     if ((0 in pix_data["landcover"]["values"])
-            or (11 in pix_data["landcover"]["values"])
+            # or (11 in pix_data["landcover"]["values"])
             or (101 in pix_data["landcover"]["values"])
             or (102 in pix_data["landcover"]["values"])
             or (103 in pix_data["landcover"]["values"])):
