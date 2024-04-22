@@ -2,6 +2,7 @@
 # See LICESNSE for details.
 import argparse
 from datetime import datetime
+import itertools
 import numpy as np
 import rasterio as rio
 import time
@@ -57,12 +58,14 @@ args = p.parse_args()
 if args.mpi:
     import mpi4py
     from mpi4py import MPI
-    from mpi4py.futures import MPIPoolExecutor, as_completed
+    from mpi4py.futures import MPIPoolExecutor, wait, as_completed
     mpi_comm = MPI.COMM_WORLD
     mpi_rank = mpi_comm.Get_rank()
     mpi_size = mpi_comm.Get_size()
+    import concurrent
 else:
-    from concurrent.futures import ProcessPoolExecutor, as_completed
+    import concurrent
+    from concurrent.futures import ProcessPoolExecutor, wait, as_completed
 
 # Create dictionary of raster data and transforms. This happens once on each
 # process.
@@ -196,67 +199,83 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     print("Shape of total score array:")
     print(result["total_score"].shape)
 
-    total_tasks = number_of_opening_angles * number_of_rotation_angles
-    total_tasks *= grid_rows * grid_cols
-    tasks_each_round = 1000000
-    tasks_to_submit = total_tasks
-    tasks_for_this_round = 0
-    params_for_futures = []
-    for i, opening_angle in enumerate(opening_angles):
-        for j, rotation_angle in enumerate(rotation_angles):
-            for row, y in enumerate(detector_ys):
-                for col, x in enumerate(detector_xs):
-                    params_for_futures.append(
-                        (Score.score_detector_from_grid, arm_length_meters,
-                         dl_for_arms_meters, opening_angle, rotation_angle, x,
-                         y, i, j, row, col))
-                    tasks_for_this_round += 1
-                    tasks_to_submit -= 1
-                    if (tasks_for_this_round
-                            >= tasks_each_round) or tasks_to_submit <= 0:
-                        print(
-                            str(datetime.now()) + " -- Submitting " +
-                            str(tasks_for_this_round) + " tasks")
-                        with ProcessPoolExecutor(njobs) as pool:
-                            futures = [
-                                pool.submit(*params)
-                                for params in params_for_futures
-                            ]
-                            for future in as_completed(futures):
-                                score = future.result()
-                                score_i = score["opening_angle_i"]
-                                score_j = score["rotation_angle_j"]
-                                score_row = score["vertex_row"]
-                                score_col = score["vertex_col"]
+    tasks_each_round = 100000
+    tasks_done = 0
+    func_to_call = Score.score_detector_from_grid
+    # params_for_futures is a generator expression. It only evaluates
+    # when you loop over it. When you loop over it, looped over items are
+    # automatically removed from the generator expression.
+    params_for_futures = ((arm_length_meters, dl_for_arms_meters,
+                           opening_angle, rotation_angle, x, y, i, j, row, col)
+                          for i, opening_angle in enumerate(opening_angles)
+                          for j, rotation_angle in enumerate(rotation_angles)
+                          for row, y in enumerate(detector_ys)
+                          for col, x in enumerate(detector_xs))
 
-                                result["opening_angle_degrees"][score_i][
-                                    score_j][score_row][score_col] = score[
-                                        "opening_angle_degrees"]
-                                result["rotation_angle_degrees"][score_i][
-                                    score_j][score_row][score_col] = score[
-                                        "rotation_angle_degrees"]
-                                result["vertex_x"][score_i][score_j][
-                                    score_row][score_col] = score["vertex_x"]
-                                result["vertex_y"][score_i][score_j][
-                                    score_row][score_col] = score["vertex_y"]
-                                result["elevation_score"][score_i][score_j][
-                                    score_row][score_col] = score[
-                                        "elevation_score"]
-                                result["tilt_score"][score_i][score_j][
-                                    score_row][score_col] = score["tilt_score"]
-                                result["landcover_score"][score_i][score_j][
-                                    score_row][score_col] = score[
-                                        "landcover_score"]
-                                result["total_score"][score_i][score_j][
-                                    score_row][score_col] = score[
-                                        "total_score"]
-                        print(
-                            str(datetime.now()) + " -- Completed " +
-                            str(tasks_for_this_round) + " tasks (" +
-                            str(tasks_to_submit) + " remaining)")
-                        params_for_futures = []
-                        tasks_for_this_round = 0
-                        time.sleep(5)
+    # Based on https://alexwlchan.net/2019/adventures-with-concurrent-futures/
+    print(str(datetime.now()) + " -- Starting process pool executor...")
+    with ProcessPoolExecutor(njobs) as pool:
+        # Make a dictionary of tasks_each_round futures
+        # Itertools takes an iterable and loops over the first N, or all
+        # if less than N. N here is tasks_each_round. After this call:
+        #   * futures will have tasks_each_round tasks
+        #   * params_for_futures updated, so iterating over it excludes first
+        #   * N cases
+        futures = {
+            pool.submit(func_to_call, *params): params
+            for params in itertools.islice(params_for_futures,
+                                           tasks_each_round)
+        }
+        # Loop over futures while dictionary is not empty
+        while futures:
+            # This function waits, returning when the first completed future is done
+            # split current futures into done (completed futures) and not done;
+            # set the futures dict we are looping over to be the not yet done ones only,
+            # effectively dropping the done futures from the dict
+            # done, futures = wait(
+            #     futures, return_when=concurrent.futures.FIRST_COMPLETED)
+            # for future in done:
+            # Record results from completed future(s)
+            for future in as_completed(futures):
+                score = future.result()
+                score_i = score["opening_angle_i"]
+                score_j = score["rotation_angle_j"]
+                score_row = score["vertex_row"]
+                score_col = score["vertex_col"]
+
+                result["opening_angle_degrees"][score_i][score_j][score_row][
+                    score_col] = score["opening_angle_degrees"]
+                result["rotation_angle_degrees"][score_i][score_j][score_row][
+                    score_col] = score["rotation_angle_degrees"]
+                result["vertex_x"][score_i][score_j][score_row][
+                    score_col] = score["vertex_x"]
+                result["vertex_y"][score_i][score_j][score_row][
+                    score_col] = score["vertex_y"]
+                result["elevation_score"][score_i][score_j][score_row][
+                    score_col] = score["elevation_score"]
+                result["tilt_score"][score_i][score_j][score_row][
+                    score_col] = score["tilt_score"]
+                result["landcover_score"][score_i][score_j][score_row][
+                    score_col] = score["landcover_score"]
+                result["total_score"][score_i][score_j][score_row][
+                    score_col] = score["total_score"]
+                tasks_done += 1
+
+                # Submit as many futures as done futures obtained.
+                # Note: the params we already looped over are no longer in
+                # params_for_futures, because generator expressions drop
+                # cases after you loop over them automatically.
+                # Also remove the completed future
+                futures.pop(future)
+                for params in itertools.islice(params_for_futures, 1):
+                    # .update takes a dict and adds/overwrites key/value pairs
+                    # with those in the provided dict
+                    futures.update(
+                        {pool.submit(func_to_call, *params): params})
+
+            print(
+                str(datetime.now()) + " -- " + str(tasks_done) +
+                " tasks complete")
 
     # Output geotiffs, finding best (smallest) score over opening and rotation
     # angles
