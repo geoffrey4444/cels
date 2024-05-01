@@ -17,12 +17,15 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [
+  "fiona",
   "numpy",
-  "rasterio",
-  "shapely",
   "pyproj >= 3.0",
-  "yapf",
-  "pytest"
+  "pytest",
+  "rasterio",
+  "scipy",
+  "shapely",
+  "tqdm",
+  "yapf",  
 ]
 
 [project.urls]
