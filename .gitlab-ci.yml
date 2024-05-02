@@ -8,8 +8,9 @@ build-and-test:
     - cd $CI_BUILDS_DIR
     - cd $CI_PROJECT_DIR
     - apt update
+    - apt upgrade -y
     - apt install -y build-essential
-    - apt install -y python3.10-venv
+    - apt install -y python3-venv
     - apt install -y libgdal-dev
     - apt install -y libproj-dev
     - python3 -m venv testenv
