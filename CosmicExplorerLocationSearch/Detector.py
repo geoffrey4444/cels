@@ -9,7 +9,7 @@ from rasterio.enums import Resampling
 import rasterio.mask
 from shapely import LineString
 
-from CosmicExplorerSiteSearch import Coordinates
+from CosmicExplorerLocationSearch import Coordinates
 
 
 def detector(arm_length_meters,

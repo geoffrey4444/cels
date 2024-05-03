@@ -1,6 +1,6 @@
 # Distributed under the MIT License.
 # See LICENSE for details.
-from CosmicExplorerSiteSearch import Detector
+from CosmicExplorerLocationSearch import Detector
 import fiona
 import numpy as np
 from pyproj import CRS, Transformer
