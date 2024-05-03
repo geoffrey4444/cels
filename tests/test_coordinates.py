@@ -1,7 +1,7 @@
 # Distributed under the MIT License.
 # See LICENSE for details.
 
-from CosmicExplorerSiteSearch import Coordinates
+from CosmicExplorerLocationSearch import Coordinates
 import random
 from pyproj import CRS, Transformer
 

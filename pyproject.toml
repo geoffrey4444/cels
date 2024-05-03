@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "CosmicExplorerSiteSearch"
+name = "CosmicExplorerLocationSearch"
 version = "0.0.1"
 authors = [
   {name="Geoffrey Lovelace", email="geoffrey4444@gmail.com"},
@@ -29,5 +29,5 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://gitlab.com/cosmic-explorer/cess"
-Issues = "https://gitlab.com/cosmic-explorer/cess/-/issues"
+Homepage = "https://gitlab.com/cosmic-explorer/cels"
+Issues = "https://gitlab.com/cosmic-explorer/cels/-/issues"

@@ -6,7 +6,7 @@ import rasterio as rio
 from rasterio.enums import Resampling
 import tempfile
 
-from CosmicExplorerSiteSearch import Coordinates, Geotiff
+from CosmicExplorerLocationSearch import Coordinates, Geotiff
 
 
 def test_crop():

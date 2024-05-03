@@ -5,7 +5,7 @@ import rasterio as rio
 import rasterio.mask
 from shapely.geometry import Polygon
 
-from CosmicExplorerSiteSearch import Coordinates
+from CosmicExplorerLocationSearch import Coordinates
 
 
 def crop(in_geotiff_path, out_geotiff_path, lon_center, lat_center,
