@@ -1,60 +1,11 @@
 # Distributed under the MIT License.
 # See LICENSE for details.
 from CosmicExplorerLocationSearch import Detector
+from CosmicExplorerLocationSearch.TestHelpers import *
 import fiona
 import numpy as np
 from pyproj import CRS, Transformer
-import random
 import tempfile
-
-
-def random_scores():
-    elevation_score = random.uniform(0.0, 1000.0)
-    tilt_score = random.uniform(0.0, 1000.0)
-    landcover_score = random.uniform(0.0, 1000.0)
-    total_score = elevation_score + tilt_score + landcover_score
-    scores = {
-        "elevation_score": elevation_score,
-        "tilt_score": tilt_score,
-        "landcover_score": landcover_score,
-        "total_score": total_score,
-    }
-    return scores
-
-
-def random_detector(scores=None):
-    # Get x,y possible values
-    xy_wkt = "EPSG:5070"
-    xy_crs = CRS(xy_wkt)
-    lonlat_to_xy = Transformer.from_crs("EPSG:4326", xy_wkt)
-    xmin, ymin, xmax, ymax = lonlat_to_xy.transform_bounds(
-        *xy_crs.area_of_use.bounds)
-
-    # I want to test on random points, but if the points are too close to
-    # the boundary, the transform can fail. So only try points within eps of
-    # bounds, where eps is however small to avoid failing transforms
-    bounds_factor = 0.1
-
-    # Choose a random vertex x,y
-    vertex_x = random.uniform(xmin * bounds_factor, xmax * bounds_factor)
-    vertex_y = random.uniform(ymin * bounds_factor, ymax * bounds_factor)
-
-    # Choose other detector parameters randomly
-    arm_length_meters = random.uniform(10000.0, 50000.0)
-    dl_for_arms_meters = arm_length_meters / random.uniform(10.0, 5000.0)
-    opening_angle_degrees = random.uniform(70.0, 110.0)
-    rotation_angle_degrees = random.uniform(0.0, 360.0)
-
-    # Make a detector from the random parameters
-    detector = Detector.detector(arm_length_meters, dl_for_arms_meters,
-                                 opening_angle_degrees, rotation_angle_degrees,
-                                 vertex_x, vertex_y, scores)
-    if scores == None:
-        return (vertex_x, vertex_y, arm_length_meters, dl_for_arms_meters) + (
-            opening_angle_degrees, rotation_angle_degrees, detector)
-    else:
-        return (vertex_x, vertex_y, arm_length_meters, dl_for_arms_meters) + (
-            opening_angle_degrees, rotation_angle_degrees, scores, detector)
 
 
 def test_detector():
@@ -170,46 +121,43 @@ def test_write_shapefile_of_detectors():
             # Check x arm metadata
             assert output[2 * i].geometry.type == "LineString"
             assert output[2 * i].properties["name"] == "x arm"
-            assert output[2 *
-                          i].properties["vert_x"] == detectors_and_inputs[i][0]
-            assert output[2 *
-                          i].properties["vert_y"] == detectors_and_inputs[i][1]
-            assert output[
-                2 * i].properties["arm_length"] == detectors_and_inputs[i][2]
-            assert output[
-                2 * i].properties["open_angle"] == detectors_and_inputs[i][4]
-            assert output[
-                2 * i].properties["rot_angle"] == detectors_and_inputs[i][5]
-            assert output[2 * i].properties[
-                "elev_score"] == detectors_and_inputs[i][6]["elevation_score"]
-            assert output[2 * i].properties[
-                "tilt_score"] == detectors_and_inputs[i][6]["tilt_score"]
-            assert output[2 * i].properties[
-                "lc_score"] == detectors_and_inputs[i][6]["landcover_score"]
-            assert output[2 * i].properties[
-                "tot_score"] == detectors_and_inputs[i][6]["total_score"]
+            assert np.abs(output[2 * i].properties["vert_x"] -
+                          detectors_and_inputs[i][0] < eps)
+            assert np.abs(output[2 * i].properties["vert_y"] -
+                          detectors_and_inputs[i][1] < eps)
+            assert np.abs(output[2 * i].properties["arm_length"] -
+                          detectors_and_inputs[i][2] < eps)
+            assert np.abs(output[2 * i].properties["open_angle"] -
+                          detectors_and_inputs[i][4] < eps)
+            assert np.abs(output[2 * i].properties["rot_angle"] -
+                          detectors_and_inputs[i][5] < eps)
+            assert np.abs(output[2 * i].properties["elev_score"] -
+                          detectors_and_inputs[i][6]["elevation_score"] < eps)
+            assert np.abs(output[2 * i].properties["tilt_score"] -
+                          detectors_and_inputs[i][6]["tilt_score"] < eps)
+            assert np.abs(output[2 * i].properties["lc_score"] -
+                          detectors_and_inputs[i][6]["landcover_score"] < eps)
+            assert np.abs(output[2 * i].properties["tot_score"] -
+                          detectors_and_inputs[i][6]["total_score"] < eps)
 
             # Check y arm metadata
             assert output[2 * i + 1].geometry.type == "LineString"
             assert output[2 * i + 1].properties["name"] == "y arm"
-            assert output[2 * i +
-                          1].properties["vert_x"] == detectors_and_inputs[i][0]
-            assert output[2 * i +
-                          1].properties["vert_y"] == detectors_and_inputs[i][1]
-            assert output[
-                2 * i +
-                1].properties["arm_length"] == detectors_and_inputs[i][2]
-            assert output[
-                2 * i +
-                1].properties["open_angle"] == detectors_and_inputs[i][4]
-            assert output[
-                2 * i +
-                1].properties["rot_angle"] == detectors_and_inputs[i][5]
-            assert output[2 * i + 1].properties[
-                "elev_score"] == detectors_and_inputs[i][6]["elevation_score"]
-            assert output[2 * i + 1].properties[
-                "tilt_score"] == detectors_and_inputs[i][6]["tilt_score"]
-            assert output[2 * i + 1].properties[
-                "lc_score"] == detectors_and_inputs[i][6]["landcover_score"]
-            assert output[2 * i + 1].properties[
-                "tot_score"] == detectors_and_inputs[i][6]["total_score"]
+            assert np.abs(output[2 * i + 1].properties["vert_x"] -
+                          detectors_and_inputs[i][0]) < eps
+            assert np.abs(output[2 * i + 1].properties["vert_y"] -
+                          detectors_and_inputs[i][1]) < eps
+            assert np.abs(output[2 * i + 1].properties["arm_length"] -
+                          detectors_and_inputs[i][2]) < eps
+            assert np.abs(output[2 * i + 1].properties["open_angle"] -
+                          detectors_and_inputs[i][4]) < eps
+            assert np.abs(output[2 * i + 1].properties["rot_angle"] -
+                          detectors_and_inputs[i][5]) < eps
+            assert np.abs(output[2 * i + 1].properties["elev_score"] -
+                          detectors_and_inputs[i][6]["elevation_score"]) < eps
+            assert np.abs(output[2 * i + 1].properties["tilt_score"] -
+                          detectors_and_inputs[i][6]["tilt_score"]) < eps
+            assert np.abs(output[2 * i + 1].properties["lc_score"] -
+                          detectors_and_inputs[i][6]["landcover_score"]) < eps
+            assert np.abs(output[2 * i + 1].properties["tot_score"] -
+                          detectors_and_inputs[i][6]["total_score"]) < eps
