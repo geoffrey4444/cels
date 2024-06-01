@@ -37,6 +37,8 @@ def detector(arm_length_meters,
       opening_angle_degrees
       rotation_angle_degrees
       arms_xy: x,y coordinates (meters) of arm, order (xend ... vertex ... yend)
+      dist_from_vertex: distance from vertex, order (xend ... vertex ... yend)
+      vertex_pixel: value of n such that nth element in arms_xy is the vertex
       scores: the scores provided (or None if no scores provided)
     """
     opening_angle_rad = opening_angle_degrees * np.pi / 180.0
@@ -44,12 +46,18 @@ def detector(arm_length_meters,
 
     # Set up detector (no rotation about vertex yet)
     dl_for_arms = dl_for_arms_meters
-    x_arm_x_norot = np.arange(0, arm_length_meters + dl_for_arms, dl_for_arms)
+    # final pixel should be arm_length_meters away from detector; allow
+    # some roundoff error to avoid sometimes getting an extra pixel
+    # Note: a previous version of this code used dl_for_arms as epislon, but
+    # this is large enough that sometimes, because of roundoff, the
+    # detector gets an extra pixel
+    eps = 1.e-10
+    arm_distance_from_vertex = np.arange(0, arm_length_meters + eps,
+                                         dl_for_arms)
+    x_arm_x_norot = arm_distance_from_vertex
     x_arm_y_norot = np.zeros(x_arm_x_norot.shape)
-    y_arm_x_norot = np.arange(0, arm_length_meters + dl_for_arms,
-                              dl_for_arms) * np.cos(opening_angle_rad)
-    y_arm_y_norot = np.arange(0, arm_length_meters + dl_for_arms,
-                              dl_for_arms) * np.sin(opening_angle_rad)
+    y_arm_x_norot = arm_distance_from_vertex * np.cos(opening_angle_rad)
+    y_arm_y_norot = arm_distance_from_vertex * np.sin(opening_angle_rad)
 
     # Rotate about vertex
     x_arm_x = x_arm_x_norot * np.cos(
@@ -71,6 +79,11 @@ def detector(arm_length_meters,
     # Note: returning this is redundant information, joining the array here
     arms_xy = np.concatenate((x_arm[::-1], y_arm[1:]))
 
+    dist_from_vertex = np.sqrt(
+        np.square(arms_xy[:, 0] - vertex_x) +
+        np.square(arms_xy[:, 1] - vertex_y))
+    vertex_pixel = len(x_arm_x_norot) - 1
+
     return {
         "vertex_x": vertex_x,
         "vertex_y": vertex_y,
@@ -79,6 +92,8 @@ def detector(arm_length_meters,
         "opening_angle_degrees": opening_angle_degrees,
         "rotation_angle_degrees": rotation_angle_degrees,
         "arms_xy": arms_xy,
+        "distance_from_vertex_meters": dist_from_vertex,
+        "vertex_pixel": vertex_pixel,
         "scores": scores
     }
 
@@ -115,14 +130,15 @@ def write_shapefile_of_detectors(detectors, output_file_path):
     }
     shp_driver = "ESRI Shapefile"
     element_to_write = {}
-    with fiona.open(output_file_path,
-                    "w",
-                    driver="ESRI Shapefile",
-                    schema=metadata_schema,
-                    # 5070 = NAD83 / Conus Albers
-                    # Hard code output projection for now;
-                    # this could be made an option
-                    crs=CRS.from_epsg(5070)) as outfile:
+    with fiona.open(
+            output_file_path,
+            "w",
+            driver="ESRI Shapefile",
+            schema=metadata_schema,
+            # 5070 = NAD83 / Conus Albers
+            # Hard code output projection for now;
+            # this could be made an option
+            crs=CRS.from_epsg(5070)) as outfile:
         for detector in detectors:
             detector_properties = {
                 "name": "x arm",

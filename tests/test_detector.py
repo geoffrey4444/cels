@@ -28,7 +28,7 @@ def test_detector():
     assert detector["rotation_angle_degrees"] == rotation_angle_degrees
 
     # Check that the arms have the correct number of points
-    sample_points_per_arm = int(np.ceil(arm_length_meters /
+    sample_points_per_arm = int(np.round(arm_length_meters /
                                         dl_for_arms_meters))
     number_of_sample_points = 1 + 2 * int(sample_points_per_arm)
     assert detector["arms_xy"].shape[1] == 2
@@ -77,6 +77,16 @@ def test_detector():
 
     # test case with scores provided
     scores = random_scores()
+
+    # test that distance to vertex has min zero, max arm_length_meters, and 
+    # spacing dl_for_arms_meters. Also check distance from vertex of
+    # vertex pixel is zero.
+    dist_from_vertex = detector["distance_from_vertex_meters"]
+    assert dist_from_vertex.shape[0] == detector["arms_xy"].shape[0]
+    assert np.abs(np.min(dist_from_vertex)) < eps
+    assert np.abs(np.max(dist_from_vertex) - arm_length_meters) < eps
+    assert np.abs(np.min(np.diff(dist_from_vertex)) + dl_for_arms_meters) < eps
+    assert np.abs(dist_from_vertex[detector["vertex_pixel"]]) < eps
 
     _, _, _, _, _, _, scores, detector_with_scores = random_detector(
         random_scores())
