@@ -24,31 +24,8 @@ def test_pixel_data_from_rasters():
     bounds = None
 
     # Make a 40km x 40km raster in New Mexico, with 1km pixels (so 40x40 pixels)
-    bounds = rio.coords.BoundingBox(left=-1113460.0,
-                                    bottom=1071639.0,
-                                    right=-1073460.0,
-                                    top=1111639.0)
     width = 40
-    height = 40
-    profile = {
-        "driver":
-        "GTiff",
-        "dtype":
-        np.float64,
-        "nodata":
-        32767.0,
-        "width":
-        width,
-        "height":
-        height,
-        "count":
-        1,
-        "crs":
-        CRS.from_epsg(5070),
-        "transform":
-        rio.transform.from_bounds(bounds.left, bounds.bottom, bounds.right,
-                                  bounds.top, width, height)
-    }
+    profile, bounds = profile_for_random_geotiff(width)
     random_raster_data = {
         "elevation": random_geotiff(rasters["elevation"], profile),
         "landcover": random_geotiff(rasters["landcover"], profile)
@@ -104,8 +81,8 @@ def test_pixel_data_from_rasters():
             np.abs(bottom_left_pix_data[raster]["values"] -
                    near_xy_pix_data[raster]["values"]) < eps)
 
-    # Verify that the same answer is NOT obtained with an L just over
-    # the boundary (because each sample point crossed into a different pixel)
+    # Verify that the same answer is NOT obtained with an L just near
+    # the boundary
     arm_next_pixel_factor = 1. + 1.e-8
     vertex_x = bounds.left + arm_next_pixel_factor * x_pixel_size
     detector_offset_x = Detector.detector(arm_length, dl_for_arm_length, 90.0,
@@ -232,7 +209,7 @@ def test_landcover_score():
     eps = 1.e-7
     assert np.abs(score - expected_score) < eps
 
-    # If the scores are all one type, then verify that they such scores
+    # If the scores are all one type, then verify that such scores
     # are related by the same constant
     for landcover_score in Score.landcover_score_by_type.keys():
         uniform_pix = np.ones(number_of_pixels) * landcover_score
@@ -240,3 +217,345 @@ def test_landcover_score():
         assert np.abs(uniform_score * 1e5 / dl_for_arm_meters -
                       number_of_pixels *
                       Score.landcover_score_by_type[landcover_score]) < eps
+
+
+def test_ideal_beamtube_depth_meters():
+    random_detector_properties = random_detector()
+    detector = random_detector_properties[-1]
+    arm_length_meters = random_detector_properties[2]
+    dl_for_arms = random_detector_properties[3]
+
+    ideal_depth = Score.ideal_beamtube_depth_meters(detector)
+    eps = 1.e-10
+    # Average value along x arm should vanish
+    assert np.abs(np.average(ideal_depth[:detector["vertex_pixel"] + 1])) < eps
+
+    # Average value along y arm should also nearly vanish
+    assert np.abs(np.average(ideal_depth[detector["vertex_pixel"]:])) < eps
+
+    # Minimum depth would be zero if the average were not removed, so add the
+    # minimum to recover the height from the average-removed depth
+    height = ideal_depth - np.min(ideal_depth)
+
+    # Check that we recover the cos part of the formula
+    # Make sure roundoff error doesn't cause an extra term in dist_from_vertex
+    # by adding or subtracting a small value from the stop values
+    eps_limits = 1.e-10
+    dist_from_vertex = detector["distance_from_vertex_meters"]
+    vertex_pixel = detector["vertex_pixel"]
+    phi_expected = dist_from_vertex - np.average(
+        dist_from_vertex[:vertex_pixel + 1])
+    phi_expected /= Score.earth_radius_meters
+
+    # Angles should be small, so Taylor approx should work well for 1-cos(phi)
+    one_minus_cos_phi_expected = 0.5 * np.square(phi_expected)
+
+    one_minus_cos_phi = height / Score.earth_radius_meters
+    # Check that 1-cos(phi) agrees with the expected value within 0.01%
+    eps_cos_check = np.max(np.abs(one_minus_cos_phi)) * 1.e-4
+    assert np.max(
+        np.abs(one_minus_cos_phi - one_minus_cos_phi_expected)) < eps_cos_check
+
+
+def test_func_to_minimize_by_tilting_detector_plane():
+    random_detector_properties = random_detector()
+    detector = random_detector_properties[-1]
+
+    elevation = np.random.uniform(100.0,
+                                  1000.0,
+                                  size=(detector["arms_xy"].shape[0], ))
+    elevation_average_removed = elevation - np.average(elevation)
+
+    eps = 1.e-10
+
+    # Check that putting in zero for the three parameters gives
+    # -elevation_average_removed
+    func_given_zeros = Score.func_to_minimize_by_tilting_detector_plane(
+        (0.0, 0.0, 0.0), detector, elevation_average_removed)
+    assert np.max(np.abs(func_given_zeros + elevation_average_removed)) < eps
+
+    # Check that vertex height simply offsets the elevation term
+    tilt_x = np.random.uniform(-1.0, 1.0)
+    tilt_y = np.random.uniform(-1.0, 1.0)
+    vertex_height = np.random.uniform(0.0, 100.0)
+    func_given_height_tiltxy = Score.func_to_minimize_by_tilting_detector_plane(
+        (tilt_x, tilt_y, vertex_height), detector, elevation_average_removed)
+    func_given_tiltxy = Score.func_to_minimize_by_tilting_detector_plane(
+        (tilt_x, tilt_y, 0.0), detector, elevation_average_removed)
+    assert np.max(
+        np.abs(func_given_height_tiltxy - func_given_tiltxy -
+               vertex_height)) < eps
+
+    # Check tilt terms are proportional to the tilt along each arm.
+    # To only check tilt terms, pass in zero vertex_height and zero elevation
+    test_tilts = Score.func_to_minimize_by_tilting_detector_plane(
+        (tilt_x, tilt_y, 0.0), detector,
+        np.zeros_like(elevation_average_removed))
+    assert np.max(
+        np.abs(
+            np.concatenate(
+                (test_tilts[:detector["vertex_pixel"] + 1] / tilt_x,
+                 test_tilts[detector["vertex_pixel"] + 1:] / tilt_y)) -
+            detector["distance_from_vertex_meters"])) < eps
+
+
+def test_depth_and_tilt():
+    # Make a detector with one arm in the x direction and one arm in the y
+    # direction
+    random_detector_properties = random_detector()
+    detector = Detector.detector(random_detector_properties[2],
+                                 random_detector_properties[3], 90.0, 0.0,
+                                 random_detector_properties[0],
+                                 random_detector_properties[1])
+
+    # Check that ideal elevation gives zero tilt
+    eps_ideal_depth_meters = 1.0
+    eps_ideal_tilt = 1.e-3
+    depth_and_tilt_ideal = Score.depth_and_tilt(
+        detector, Score.ideal_beamtube_depth_meters(detector))
+    assert np.abs(depth_and_tilt_ideal["x_tilt"]) < eps_ideal_tilt
+    assert np.abs(depth_and_tilt_ideal["y_tilt"]) < eps_ideal_tilt
+    assert np.abs(
+        depth_and_tilt_ideal["vertex_height"]) < eps_ideal_depth_meters
+    # Check if depth never exceeds 1 meter when elevation is ideal
+    assert np.max(np.abs(
+        depth_and_tilt_ideal["depth"])) < eps_ideal_depth_meters
+
+    # Make elevation with constant slopes in x and y direction,
+    # on top of the ideal elevation,
+    # and check that the the tilts recovered are correct
+    tilt_x_expected = np.random.uniform(-1.0, 1.0)
+    tilt_y_expected = np.random.uniform(-1.0, 1.0)
+    elevation_x_arm = np.array(
+        np.flip([
+            tilt_x_expected * random_detector_properties[3] * i
+            for i, _ in enumerate(detector["distance_from_vertex_meters"]
+                                  [:detector["vertex_pixel"] + 1])
+        ]))
+    elevation_y_arm = np.array(
+        np.array([
+            tilt_y_expected * random_detector_properties[3] * i
+            for i, _ in enumerate(detector["distance_from_vertex_meters"]
+                                  [detector["vertex_pixel"] + 1:])
+        ]))
+    elevation = np.concatenate((elevation_x_arm, elevation_y_arm))
+    elevation_shift = np.random.uniform(-100.0, 100.0)
+    elevation += elevation_shift
+    elevation += Score.ideal_beamtube_depth_meters(detector)
+    vertex_height_expected = elevation[detector["vertex_pixel"]] - np.average(
+        elevation)
+    depth_and_tilt = Score.depth_and_tilt(detector, elevation)
+    eps_recovered_tilt = 1.e-2
+    assert np.abs(depth_and_tilt["x_tilt"] -
+                  tilt_x_expected) < eps_recovered_tilt
+    assert np.abs(depth_and_tilt["y_tilt"] -
+                  tilt_y_expected) < eps_recovered_tilt
+
+    # Check also that, within 10%, the fit recovered the average-removed
+    # vertex height, unless the expected vertex height is smaller than 2km; in
+    # that case, just require the vertex height to be recovered within 300.0 m.
+    # This tolerance could likely be tightened with a better fit.
+    eps_vertex_height = 0.1
+    if vertex_height_expected > 2000.0:  #meters
+        assert np.abs(
+            (vertex_height_expected - depth_and_tilt["vertex_height"]) /
+            vertex_height_expected) < eps_vertex_height
+    else:
+        assert np.abs(vertex_height_expected -
+                      depth_and_tilt["vertex_height"]) < 300.0
+
+
+def test_elevation_and_tilt_score():
+    random_detector_properties = random_detector()
+    detector = random_detector_properties[-1]
+
+    # Test that digging cost for ideal elevation is small
+    ideal_elevation = Score.ideal_beamtube_depth_meters(detector)
+    ideal_scores = Score.elevation_and_tilt_score(
+        detector, Score.ideal_beamtube_depth_meters(detector))
+    # CE-T2000016-v2 explains the elevation score has nominal units of $1M USD
+    # Here, check that for an ideal elevation, the elevation score is
+    # less than 2 (nominal cost < $2M USD). In practice, the best sites
+    # found in a national search for 40-km, 90-degree-opening-angle detectors
+    # had scores O(10). The score could likely be smaller here with a better
+    # fit; this threshold is chosen empirically based on how well the
+    # current fit can recover zero cost.
+    assert np.abs(ideal_scores["elevation"]) < 2
+    # Check for ideal elevation that the tilt score is negligible
+    assert np.abs(ideal_scores["tilt"]) < 1.e-2
+
+    # Here just test that the formulas for elevation and tilt scores
+    # have not changed, using random elevation data that starts with
+    # ideal elevation and then adds random noise and significant tilt
+    tilt_x_expected = np.random.uniform(-0.1, -1.0)
+    tilt_y_expected = np.random.uniform(0.1, 1.0)
+    tilt_elevation_x_arm = np.array(
+        np.flip([
+            tilt_x_expected * random_detector_properties[3] * i
+            for i, _ in enumerate(detector["distance_from_vertex_meters"]
+                                  [:detector["vertex_pixel"] + 1])
+        ]))
+    tilt_elevation_y_arm = np.array(
+        np.array([
+            tilt_y_expected * random_detector_properties[3] * i
+            for i, _ in enumerate(detector["distance_from_vertex_meters"]
+                                  [detector["vertex_pixel"] + 1:])
+        ]))
+    tilt_elevation = np.concatenate(
+        (tilt_elevation_x_arm, tilt_elevation_y_arm))
+    const_height_offset = np.random.uniform(low=-100.0, high=100.0)
+    elevation = ideal_elevation + tilt_elevation + np.random.uniform(
+        low=-30.0, high=30.0, size=ideal_elevation.shape) + const_height_offset
+
+    scores = Score.elevation_and_tilt_score(detector, elevation)
+    depth_and_tilt = Score.depth_and_tilt(detector, elevation)
+    tilt_0 = 0.5 * detector["arm_length_meters"] / Score.earth_radius_meters
+    tilt_score_expected = (depth_and_tilt["x_tilt"]**2 +
+                           depth_and_tilt["y_tilt"]**2) * 10.0 / (tilt_0**2)
+
+    cut_fill_volume = depth_and_tilt["depth"] * (
+        np.abs(depth_and_tilt["depth"]) + 4.0) * detector["dl_for_arms_meters"]
+    cut_fill_volume[cut_fill_volume < -500.0 *
+                    detector["dl_for_arms_meters"]] = -500.0 * detector[
+                        "dl_for_arms_meters"]
+    elevation_score_expected = (np.abs(np.sum(cut_fill_volume)) +
+                                np.sum(np.abs(cut_fill_volume))) * 1.0e-5
+
+    eps_depth_tilt_score = 1.e-8
+    assert np.abs(scores["tilt"] - tilt_score_expected) < eps_depth_tilt_score
+    assert np.abs(scores["elevation"] -
+                  elevation_score_expected) < eps_depth_tilt_score
+
+    # Also check that these scores are actually much worse than the ideal case
+    assert np.abs(scores["elevation"] > 10.0)
+    assert np.abs(scores["tilt"] > 10)
+
+    # Verify that the minimum volume (i.e., max cut volume)
+    eps_for_max_cut = 1.e-10  # to allow for some roundoff error
+    assert scores["max_cut_vol_meters^3"] >= scores[
+        "expected_max_cut_vol_meters^3"] * detector[
+            "dl_for_arms_meters"] - eps_for_max_cut
+
+
+def test_suitability_scores():
+    temp_dir = tempfile.TemporaryDirectory()
+    temp_path = temp_dir.name
+
+    # generate random geotiffs for elevation, landcover
+    rasters = {
+        "elevation": temp_path + "/elevation.tif",
+        "landcover": temp_path + "/landcover.tif"
+    }
+
+    width = 40  # pixels
+    profile, bounds = profile_for_random_geotiff(width)
+    no_data_value = profile["nodata"]
+    random_raster_data = {
+        "elevation":
+        random_elevation_geotiff_with_width(rasters["elevation"], width),
+        "landcover":
+        random_landcover_geotiff_with_width(rasters["landcover"], width)
+    }
+
+    # generate random detector inside sample image
+    min_length = 1000.0
+    max_length = 2000.0
+    random_center = [
+        np.random.uniform(bounds.left + 1.1 * max_length,
+                          bounds.right - 1.1 * max_length),
+        np.random.uniform(bounds.bottom + 1.1 * max_length,
+                          bounds.top - 1.1 * max_length)
+    ]
+    random_detector_properties = random_detector(length_bounds=(min_length,
+                                                                max_length),
+                                                 center=random_center)
+    detector = random_detector_properties[-1]
+    pix_data = Score.pixel_data_from_rasters(rasters, detector)
+
+    scores = Score.suitability_scores(rasters, no_data_value, detector, True)
+
+    eps_pix_data = 1.e-12
+    assert scores['total_score'] == scores["elevation_score"] + scores[
+        "tilt_score"] + scores["landcover_score"]
+    for key in scores["pixel_data"]:
+        assert np.max(
+            np.abs(scores["pixel_data"][key]["values"] -
+                   pix_data[key]["values"])) < eps_pix_data
+        assert np.max(
+            np.abs(scores["pixel_data"][key]["coords"] -
+                   pix_data[key]["coords"])) < eps_pix_data
+
+    # Check that no pixel data returned when not requested
+    scores_no_pix = Score.suitability_scores(rasters, no_data_value, detector,
+                                             False)
+    assert "pixel_data" not in scores_no_pix.keys()
+
+    # Check that individual scores are computed from the correct functions
+    assert scores_no_pix["elevation_score"] == Score.elevation_and_tilt_score(
+        detector, pix_data["elevation"]["values"])["elevation"]
+    assert scores_no_pix["tilt_score"] == Score.elevation_and_tilt_score(
+        detector, pix_data["elevation"]["values"])["tilt"]
+    assert scores_no_pix["landcover_score"] == Score.landcover_score(
+        pix_data["landcover"]["values"], detector["dl_for_arms_meters"])
+
+    # Check that no_data_value is returned if a landcover pixel data
+    # has a value to be omitted
+    # generate random geotiffs for elevation, landcover where all
+    # landcover pixels are drawn from values to be omitted.
+    rasters_check_omitted_values = {
+        "elevation": temp_path + "/elevation.tif",
+        "landcover": temp_path + "/landcover_only_values_to_omit.tif"
+    }
+
+    width = 40  # pixels
+    profile, bounds = profile_for_random_geotiff(width)
+    no_data_value = profile["nodata"]
+    random_landcover_geotiff_with_width(
+        rasters_check_omitted_values["landcover"], width, False)
+    scores_check_omitted_values = Score.suitability_scores(
+        rasters_check_omitted_values, no_data_value, detector, False)
+    for key in scores_check_omitted_values:
+        assert scores_check_omitted_values[key] == no_data_value
+
+    # Finally, check that score_detector_from_grid() is just a wrapper
+    # for suitability_scores() that also returns inputs
+    arm_length_meters = random_detector_properties[2]
+    dl_for_arms_meters = random_detector_properties[3]
+    opening_angle_degrees = random_detector_properties[4]
+    rotation_angle_degrees = random_detector_properties[5]
+    vertex_x = random_detector_properties[0]
+    vertex_y = random_detector_properties[1]
+    opening_angle_i = np.random.randint(100, 500)
+    rotation_angle_j = np.random.randint(100, 500)
+    vertex_row = np.random.randint(100, 500)
+    vertex_col = np.random.randint(100, 500)
+
+    result = Score.score_detector_from_grid(
+        rasters,
+        no_data_value,
+        arm_length_meters,
+        dl_for_arms_meters,
+        opening_angle_degrees,
+        rotation_angle_degrees,
+        vertex_x,
+        vertex_y,
+        opening_angle_i,
+        rotation_angle_j,
+        vertex_row,
+        vertex_col,
+    )
+
+    assert result["arm_length_meters"] == arm_length_meters
+    assert result["dl_for_arms_meters"] == dl_for_arms_meters
+    assert result["opening_angle_degrees"] == opening_angle_degrees
+    assert result["rotation_angle_degrees"] == rotation_angle_degrees
+    assert result["vertex_x"] == vertex_x
+    assert result["vertex_y"] == vertex_y
+    assert result["opening_angle_i"] == opening_angle_i
+    assert result["rotation_angle_j"] == rotation_angle_j
+    assert result["vertex_row"] == vertex_row
+    assert result["vertex_col"] == vertex_col
+    for key in scores.keys():
+        if key == "pixel_data":
+            continue  # score_detector_from_grid() does not return pixel data
+        assert result[key] == scores[key]
