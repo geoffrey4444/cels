@@ -2,3 +2,9 @@
 This python package contains code to assist with identifying and evaluating
 potential locations for [Cosmic Explorer](https://cosmicexplorer.org), a planned
 next-generation gravitational-wave observatory.
+
+To install this code in your python environment, you can run the 
+following terminal command:
+```
+pip install -e .
+```
