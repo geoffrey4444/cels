@@ -28,6 +28,9 @@ dependencies = [
   "yapf",  
 ]
 
+[project.scripts]
+findsites = "CosmicExplorerLocationSearch.FindSites:main"
+
 [project.urls]
 Homepage = "https://gitlab.com/cosmic-explorer/cels"
 Issues = "https://gitlab.com/cosmic-explorer/cels/-/issues"
