@@ -29,6 +29,7 @@ This command will output the following:
 * geotiff images containing the best score at each vertex location
 * shapefiles with the detectors with scores below the threshold `outscore`
 * a csv file with scores of all configurations tested during the search
+
 For help on the available options, run
 ```sh
 findsites -h
