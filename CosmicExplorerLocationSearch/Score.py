@@ -419,11 +419,13 @@ def suitability_scores(
         (103 in pix_data["landcover"]["values"]) or
         (no_data_value in pix_data["landcover"]["values"]) or
         (no_data_value in pix_data["elevation"]["values"])):
+        factor_to_make_no_value_large = 1000000000
         return {
-            "elevation_score": no_data_value,
-            "tilt_score": no_data_value,
-            "landcover_score": no_data_value,
-            "total_score": no_data_value
+            # Take abs of no_data_value in case that value is negative
+            "elevation_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "tilt_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "landcover_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "total_score": factor_to_make_no_value_large * np.abs(no_data_value)
         }
 
     elevation_tilt_scores = elevation_and_tilt_score(
