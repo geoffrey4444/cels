@@ -5,6 +5,7 @@ from datetime import datetime
 import itertools
 import numpy as np
 import rasterio as rio
+import sys
 
 import concurrent
 from concurrent.futures import ProcessPoolExecutor, wait, as_completed
@@ -228,6 +229,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
             print(
                 str(datetime.now()) + " -- " + str(tasks_done) +
                 " tasks complete")
+            sys.stdout.flush()
 
     # Output geotiffs, finding best (smallest) score over opening and rotation
     # angles

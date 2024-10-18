@@ -495,7 +495,35 @@ def score_detector_from_grid(
     detector = Detector.detector(arm_length_meters, dl_for_arms_meters,
                                  opening_angle_degrees, rotation_angle_degrees,
                                  vertex_x, vertex_y)
-    scores = suitability_scores(raster_paths, no_data_value, detector, False)
+    try:
+        scores = suitability_scores(raster_paths, no_data_value, detector, False)
+    except Exception as error:
+        print("\nUnexpected error scoring detector:")
+        print(error)
+        
+        # Return no data for this detector
+        factor_to_make_no_value_large = 1000000000
+        result = {
+            "arm_length_meters": arm_length_meters,
+            "dl_for_arms_meters": dl_for_arms_meters,
+            "opening_angle_degrees": opening_angle_degrees,
+            "rotation_angle_degrees": rotation_angle_degrees,
+            "vertex_x": vertex_x,
+            "vertex_y": vertex_y,
+            "opening_angle_i": opening_angle_i,
+            "rotation_angle_j": rotation_angle_j,
+            "vertex_row": vertex_row,
+            "vertex_col": vertex_col,
+            "elevation_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "tilt_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "landcover_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "total_score": factor_to_make_no_value_large * np.abs(no_data_value)
+        }
+        print("Detector that failed:")
+        print(result)
+        print("continuing, reporting no data for this detector\n\n")
+        return result
+
     result = {
         "arm_length_meters": arm_length_meters,
         "dl_for_arms_meters": dl_for_arms_meters,
