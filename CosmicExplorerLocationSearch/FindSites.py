@@ -5,6 +5,7 @@ from datetime import datetime
 import itertools
 import numpy as np
 import rasterio as rio
+import sys
 
 import concurrent
 from concurrent.futures import ProcessPoolExecutor, wait, as_completed
@@ -228,6 +229,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
             print(
                 str(datetime.now()) + " -- " + str(tasks_done) +
                 " tasks complete")
+            sys.stdout.flush()
 
     # Output geotiffs, finding best (smallest) score over opening and rotation
     # angles
@@ -260,16 +262,18 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
 
     # Undo log of nodata points, replace with actual no data value
     no_data = raster_info["no_data_value"]
-    log10_no_data = np.log10(no_data)
+    factor_to_make_no_value_large = 1000000000
+    no_data_times_big_factor = factor_to_make_no_value_large * np.abs(no_data)
+    log10_no_data_times_big_factor = np.log10(no_data_times_big_factor)
     eps_for_log = 1.e-6
-    print("No data = " + str(no_data) + " log10(no data) = " +
-          str(log10_no_data))
+    print("No data = " + str(no_data) + " log10(no data * big factor) = " +
+          str(log10_no_data_times_big_factor))
     best_elevation[np.abs(best_elevation -
-                          log10_no_data) < eps_for_log] = no_data
-    best_tilt[np.abs(best_tilt - log10_no_data) < eps_for_log] = no_data
+                          log10_no_data_times_big_factor) < eps_for_log] = no_data
+    best_tilt[np.abs(best_tilt - log10_no_data_times_big_factor) < eps_for_log] = no_data
     best_landcover[np.abs(best_landcover -
-                          log10_no_data) < eps_for_log] = no_data
-    best_total[np.abs(best_total - log10_no_data) < eps_for_log] = no_data
+                          log10_no_data_times_big_factor) < eps_for_log] = no_data
+    best_total[np.abs(best_total - log10_no_data_times_big_factor) < eps_for_log] = no_data
 
     with rio.open(path_for_output + "/elevation_score.tif", "w",
                   **out_profile) as out_geofile:
@@ -414,6 +418,8 @@ def main():
                    type=int,
                    help="Number of jobs to run in parallel")
     args = p.parse_args()
+    print(Score.__file__)
+    print(args)
 
     # Create dictionary of raster data and transforms. This happens once on each
     # process.

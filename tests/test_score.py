@@ -515,7 +515,11 @@ def test_suitability_scores():
     scores_check_omitted_values = Score.suitability_scores(
         rasters_check_omitted_values, no_data_value, detector, False)
     for key in scores_check_omitted_values:
-        assert scores_check_omitted_values[key] == no_data_value
+        # Scores return no_data * a big number (1e9), so that these scores
+        # are never best for a given corner station location unless
+        # no rotation tried for a corner station location have well-defined
+        # scores (as would happen e.g. if the vertex was in a no-data region)
+        assert scores_check_omitted_values[key] == no_data_value * 1000000000
 
     # Finally, check that score_detector_from_grid() is just a wrapper
     # for suitability_scores() that also returns inputs
