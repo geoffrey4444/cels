@@ -443,6 +443,7 @@ def main():
             "elevation": args.elevation,
             "landcover": args.landcover
         }
+    print(f"Raster info: {raster_info}")
 
     evaluate_region_lon_lat(args.lon, args.lat, args.width, args.height,
                             args.N, args.arm_length, args.dl,
