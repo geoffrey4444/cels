@@ -159,7 +159,7 @@ def landcover_score(landcover_pixel_data, dl_for_arms_meters):
 
 def ideal_beamtube_depth_meters(detector):
     """Input: detector (output from Detector.detector()).
-       Output: depth (+ cut, - fill) of straight beamtube in meters for the
+       Output: depth (- cut, + fill) of straight beamtube in meters for the
        idealized situation of a perfectly spherical Earth.
        Imagine balancing the midpoint of each arm of the detector on a sphere
        of radius earth_radius_meters. This function calculates the height each
@@ -255,7 +255,7 @@ def depth_and_tilt(detector, elevation_pixel_data):
 
     Output:
       Dict containing the following:
-        "depth": pixel data for depth (+ for cut, - for fill) along arms
+        "depth": pixel data for depth (- for cut, + for fill) along arms
         "x_tilt": tilt of x arm (dimensionless)
         "y_tilt": tilt of y arm (dimensionless)
         "vertex_height_meters": vertex height in meters
