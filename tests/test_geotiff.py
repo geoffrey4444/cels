@@ -1,5 +1,6 @@
 # Distributed under the MIT License.
 # See LICENSE for details.
+from affine import Affine
 import numpy as np
 import os
 import rasterio as rio
@@ -133,3 +134,88 @@ def test_resample():
                 resample_array = resample_file.read()
                 eps = 1.e-15
                 assert np.sum(np.abs(expected_array - resample_array)) < eps
+
+
+def test_bilinear_interpolation_matches_rasterio_sample():
+    """Test that our bilinear interpolation function matches rasterio.sample() behavior."""
+    # Make a temporary directory
+    temp_dir = tempfile.TemporaryDirectory()
+    temp_path = temp_dir.name
+
+    # Get path this script is in
+    base_path = os.path.dirname(os.path.realpath(__file__))
+
+    # Use the existing test image
+    base_image_path = base_path + "/test_images/SouthNM_Elevation_1km.tif"
+
+    with rio.open(base_image_path) as geofile:
+        # Read the raster data into memory
+        array = geofile.read(1)  # Read first band
+        transform = geofile.transform
+        nodata = geofile.nodata
+
+        # Create test coordinates - mix of pixel centers and fractional positions
+        # to test interpolation behavior
+        bounds = geofile.bounds
+
+        # Test coordinates: some at pixel centers, some at fractional positions
+        test_coords = np.array([
+            # Pixel center coordinates (should give exact pixel values)
+            [bounds.left + 1000, bounds.bottom + 1000],  # Near bottom-left
+            [bounds.right - 1000, bounds.top - 1000],  # Near top-right
+
+            # Fractional coordinates (should interpolate)
+            [bounds.left + 1500, bounds.bottom + 1500],  # Between pixels
+            [bounds.right - 1500, bounds.top - 1500],  # Between pixels
+
+            # Edge cases
+            [bounds.left, bounds.bottom],  # Exact edge
+            [bounds.right, bounds.top],  # Exact edge
+        ])
+
+        # Get values using rasterio.sample()
+        rasterio_values = np.array(
+            [sample[0] for sample in geofile.sample(test_coords)])
+
+        # Get values using our bilinear interpolation function        
+        inv_transform = ~transform
+        pixel_coords = np.array(
+            [inv_transform * (x, y) for x, y in test_coords])
+        cols_f = pixel_coords[:, 0]
+        rows_f = pixel_coords[:, 1]
+        row_floor = np.floor(rows_f).astype(int)
+        col_floor = np.floor(cols_f).astype(int)
+        row_ceil = row_floor + 1
+        col_ceil = col_floor + 1
+        row_weight = rows_f - row_floor
+        col_weight = cols_f - col_floor
+
+        our_values = Geotiff.bilinear_interpolate_vectorized(array,
+                                                             test_coords,
+                                                             transform,
+                                                             nodata=nodata)
+
+        # Compare results
+        eps = 1e-10  # Small tolerance for floating point differences
+        assert np.allclose(rasterio_values, our_values, rtol=eps, atol=eps), \
+            f"Interpolation mismatch: rasterio={rasterio_values}, ours={our_values}"
+
+        # Test with a larger set of random coordinates
+        np.random.seed(42)  # For reproducible results
+        num_random_points = 100
+        random_coords = np.column_stack([
+            np.random.uniform(bounds.left, bounds.right, num_random_points),
+            np.random.uniform(bounds.bottom, bounds.top, num_random_points)
+        ])
+
+        # Get values using rasterio.sample()
+        rasterio_random_values = np.array(
+            [sample[0] for sample in geofile.sample(random_coords)])
+
+        # Get values using our bilinear interpolation function
+        our_random_values = Geotiff.bilinear_interpolate_vectorized(
+            array, random_coords, transform, nodata=nodata)
+
+        # Compare random results
+        assert np.allclose(rasterio_random_values, our_random_values, rtol=eps, atol=eps), \
+            f"Random interpolation mismatch: max diff = {np.max(np.abs(rasterio_random_values - our_random_values))}"

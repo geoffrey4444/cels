@@ -1,11 +1,99 @@
 # Distributed under the MIT License.
 # See LICENSE for details.
 
+from affine import Affine
+import numpy as np
 import rasterio as rio
 import rasterio.mask
 from shapely.geometry import Polygon
 
 from CosmicExplorerLocationSearch import Coordinates
+
+
+def bilinear_interpolate_vectorized(array, coords, transform, nodata=None):
+    """
+    Perform vectorized bilinear interpolation on a 2D array.
+    
+    This function replicates the behavior of rasterio.sample() for bilinear
+    interpolation, but works directly on numpy arrays without copying data.
+    
+    Inputs:
+        array: 2D numpy array containing raster data
+        coords: Nx2 array of (x, y) coordinates in the same projection as the transform
+        transform: rasterio transform object that maps pixel coordinates to world coordinates
+        nodata: value to return for coordinates outside the raster bounds
+        
+    Returns:
+        N-length array of interpolated values
+        
+    Note:
+        This function returns nodata for coordinates outside the array bounds.
+    """
+    nrows, ncols = array.shape
+
+    # Use rasterio's rowcol function to get pixel coordinates (matches rasterio.sample behavior)
+    rows_f, cols_f = rio.transform.rowcol(transform,
+                                          [coord[0] for coord in coords],
+                                          [coord[1] for coord in coords])
+    rows_f = np.array(rows_f, dtype=float)
+    cols_f = np.array(cols_f, dtype=float)
+
+    # Check if coordinates are exactly at pixel centers (integer coordinates)
+    is_pixel_center = (np.abs(rows_f - np.round(rows_f)) <
+                       1e-10) & (np.abs(cols_f - np.round(cols_f)) < 1e-10)
+
+    # For pixel centers, use exact integer coordinates
+    rows_f = np.where(is_pixel_center, np.round(rows_f), rows_f)
+    cols_f = np.where(is_pixel_center, np.round(cols_f), cols_f)
+
+    # Get floor and ceiling indices
+    row_floor = np.floor(rows_f).astype(int)
+    col_floor = np.floor(cols_f).astype(int)
+    row_ceil = row_floor + 1
+    col_ceil = col_floor + 1
+
+    # Calculate interpolation weights
+    row_weight = rows_f - row_floor
+    col_weight = cols_f - col_floor
+
+    # Handle edge cases where weight would be NaN
+    row_weight = np.where(np.isnan(row_weight), 0.0, row_weight)
+    col_weight = np.where(np.isnan(col_weight), 0.0, col_weight)
+
+    # Clamp weights to [0, 1] range for out-of-bounds coordinates
+    row_weight = np.clip(row_weight, 0.0, 1.0)
+    col_weight = np.clip(col_weight, 0.0, 1.0)
+
+    # Out-of-bounds logic: allow sampling at the last pixel center
+    out_of_bounds = ((row_floor < 0) | (row_floor >= nrows) | (col_floor < 0) |
+                     (col_floor >= ncols) | ((row_ceil > nrows) |
+                                             ((row_ceil == nrows) &
+                                              (row_weight != 0))) |
+                     ((col_ceil > ncols) | ((col_ceil == ncols) &
+                                            (col_weight != 0))))
+
+    # Clamp indices to valid array bounds for interpolation
+    row_floor = np.clip(row_floor, 0, nrows - 1)
+    col_floor = np.clip(col_floor, 0, ncols - 1)
+    row_ceil = np.clip(row_ceil, 0, nrows - 1)
+    col_ceil = np.clip(col_ceil, 0, ncols - 1)
+
+    # Get the four corner values (vectorized)
+    v00 = array[row_floor, col_floor]
+    v01 = array[row_floor, col_ceil]
+    v10 = array[row_ceil, col_floor]
+    v11 = array[row_ceil, col_ceil]
+
+    # Bilinear interpolation (vectorized)
+    v0 = v00 * (1 - col_weight) + v01 * col_weight
+    v1 = v10 * (1 - col_weight) + v11 * col_weight
+    values = v0 * (1 - row_weight) + v1 * row_weight
+
+    # Set out-of-bounds results to nodata
+    if nodata is not None:
+        values[out_of_bounds] = nodata
+
+    return values
 
 
 def crop(in_geotiff_path, out_geotiff_path, lon_center, lat_center,
