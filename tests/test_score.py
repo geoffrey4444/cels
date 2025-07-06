@@ -1,13 +1,13 @@
 # Distributed under the MIT License.
 # See LICENSE for details.
-from CosmicExplorerLocationSearch import Detector
-from CosmicExplorerLocationSearch import Score
-from CosmicExplorerLocationSearch.TestHelpers import *
 import numpy as np
-from pyproj import CRS
 import random
 import rasterio as rio
 import tempfile
+from pyproj import CRS
+
+from CosmicExplorerLocationSearch import Detector, Geotiff, Score
+from CosmicExplorerLocationSearch.TestHelpers import *
 
 
 def test_pixel_data_from_rasters():
@@ -253,8 +253,8 @@ def test_ideal_beamtube_depth_meters():
     one_minus_cos_phi = height / Score.earth_radius_meters
     # Check that 1-cos(phi) agrees with the expected value within 0.01%
     eps_cos_check = np.max(np.abs(one_minus_cos_phi)) * 1.e-4
-    assert np.max(
-        np.abs(one_minus_cos_phi - one_minus_cos_phi_expected)) < eps_cos_check
+    assert np.max(np.abs(one_minus_cos_phi -
+                         one_minus_cos_phi_expected)) < eps_cos_check
 
 
 def test_func_to_minimize_by_tilting_detector_plane():
@@ -293,9 +293,9 @@ def test_func_to_minimize_by_tilting_detector_plane():
         np.zeros_like(elevation_average_removed))
     assert np.max(
         np.abs(
-            np.concatenate(
-                (test_tilts[:detector["vertex_pixel"] + 1] / tilt_x,
-                 test_tilts[detector["vertex_pixel"] + 1:] / tilt_y)) -
+            np.concatenate((test_tilts[:detector["vertex_pixel"] + 1] / tilt_x,
+                            test_tilts[detector["vertex_pixel"] + 1:] /
+                            tilt_y)) -
             detector["distance_from_vertex_meters"])) < eps
 
 
@@ -563,3 +563,168 @@ def test_suitability_scores():
         if key == "pixel_data":
             continue  # score_detector_from_grid() does not return pixel data
         assert result[key] == scores[key]
+
+
+def worker_process_shared_memory(shm_name, transform, nodata_value, detector,
+                                 shape, dtype):
+    """Worker function for testing shared memory access."""
+    try:
+        from CosmicExplorerLocationSearch import Score
+        result = Score.pixel_data_from_shared_memory(shm_name, transform,
+                                                     nodata_value, detector,
+                                                     shape, dtype)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def test_pixel_data_from_shared_memory():
+    """Test pixel_data_from_shared_memory function with multiprocessing."""
+    import tempfile
+    import os
+    from concurrent.futures import ProcessPoolExecutor
+    from CosmicExplorerLocationSearch import Geotiff, Detector
+
+    # Create a temporary directory
+    temp_dir = tempfile.TemporaryDirectory()
+    temp_path = temp_dir.name
+
+    # Convert test images to BSQ files
+    elevation_bsq = os.path.join(temp_path, "elevation.bsq")
+    landcover_bsq = os.path.join(temp_path, "landcover.bsq")
+
+    elevation_tif = "tests/test_images/SouthNM_Elevation_1km.tif"
+    landcover_tif = "tests/test_images/SouthNM_Landcover_1km.tif"
+
+    # Convert geotiffs to BSQ format
+    Geotiff.geotiff_to_bsq(elevation_tif, elevation_bsq)
+    Geotiff.geotiff_to_bsq(landcover_tif, landcover_bsq)
+
+    # Get expected results using pixel_data_from_rasters
+    raster_file_dict = {"elevation": elevation_tif, "landcover": landcover_tif}
+
+    # Get raster bounds for landcover
+    with rio.open(landcover_tif) as src:
+        bounds = src.bounds
+        center_x = (bounds.left + bounds.right) / 2.0
+        center_y = (bounds.bottom + bounds.top) / 2.0
+
+    # Create a detector for testing
+    detector = Detector.detector(arm_length_meters=1000.0,
+                                 dl_for_arms_meters=100.0,
+                                 opening_angle_degrees=90.0,
+                                 rotation_angle_degrees=0.0,
+                                 vertex_x=center_x,
+                                 vertex_y=center_y)
+
+    expected_results = Score.pixel_data_from_rasters(raster_file_dict,
+                                                     detector)
+
+    # Read BSQ files into shared memory
+    elevation_shm_info = Geotiff.read_bsq_to_shared_memory(elevation_bsq)
+    landcover_shm_info = Geotiff.read_bsq_to_shared_memory(landcover_bsq)
+
+    # Test with 4 processes accessing shared memory
+    with ProcessPoolExecutor(max_workers=4) as executor:
+        # Submit tasks for elevation data
+        elevation_futures = []
+        for i in range(4):
+            future = executor.submit(worker_process_shared_memory,
+                                     elevation_shm_info['shared_data_name'],
+                                     elevation_shm_info['affine_transform'],
+                                     elevation_shm_info['nodata_value'],
+                                     detector, elevation_shm_info['shape'],
+                                     elevation_shm_info['dtype'])
+            elevation_futures.append(future)
+
+        # Submit tasks for landcover data
+        landcover_futures = []
+        for i in range(4):
+            future = executor.submit(worker_process_shared_memory,
+                                     landcover_shm_info['shared_data_name'],
+                                     landcover_shm_info['affine_transform'],
+                                     landcover_shm_info['nodata_value'],
+                                     detector, landcover_shm_info['shape'],
+                                     landcover_shm_info['dtype'])
+            landcover_futures.append(future)
+
+        # Collect results
+        elevation_results = [future.result() for future in elevation_futures]
+        landcover_results = [future.result() for future in landcover_futures]
+
+    # Verify that all processes returned the same results as expected
+    eps = 1e-12
+
+    for i, result in enumerate(elevation_results):
+        if "error" in result:
+            raise AssertionError(f"Process {i} failed: {result['error']}")
+
+        # Get the pixel indices that the shared memory method actually used
+        xs = detector['arms_xy'][:, 0]
+        ys = detector['arms_xy'][:, 1]
+        rows, cols = rio.transform.rowcol(
+            elevation_shm_info['affine_transform'], xs, ys)
+
+        # Read the elevation raster and get the values at those exact pixel indices
+        with rio.open(elevation_tif) as src:
+            array = src.read(1)
+            expected_values = []
+            for row, col in zip(rows, cols):
+                if 0 <= row < array.shape[0] and 0 <= col < array.shape[1]:
+                    expected_values.append(array[row, col])
+                else:
+                    expected_values.append(src.nodata)
+
+        # Compare the shared memory values with the expected values at the same pixel indices
+        assert np.array_equal(
+            result["values"], expected_values
+        ), f"Elevation values don't match expected values at the same pixel indices"
+        assert np.allclose(result["coords"],
+                           expected_results["elevation"]["coords"],
+                           rtol=eps)
+
+    for i, result in enumerate(landcover_results):
+        if "error" in result:
+            raise AssertionError(f"Process {i} failed: {result['error']}")
+
+        # Get the pixel indices that the shared memory method actually used
+        xs = detector['arms_xy'][:, 0]
+        ys = detector['arms_xy'][:, 1]
+        rows, cols = rio.transform.rowcol(
+            landcover_shm_info['affine_transform'], xs, ys)
+
+        # Read the landcover raster and get the values at those exact pixel indices
+        with rio.open(landcover_tif) as src:
+            array = src.read(1)
+            expected_values = []
+            for row, col in zip(rows, cols):
+                if 0 <= row < array.shape[0] and 0 <= col < array.shape[1]:
+                    expected_values.append(array[row, col])
+                else:
+                    expected_values.append(src.nodata)
+
+        # Compare the shared memory values with the expected values at the same pixel indices
+        assert np.array_equal(
+            result["values"], expected_values
+        ), f"Landcover values don't match expected values at the same pixel indices"
+        assert np.allclose(result["coords"],
+                           expected_results["landcover"]["coords"],
+                           rtol=eps)
+
+    # Clean up shared memory
+    try:
+        import multiprocessing.shared_memory as shared_memory
+        shm_elevation = shared_memory.SharedMemory(
+            name=elevation_shm_info['shared_data_name'])
+        shm_elevation.close()
+        shm_elevation.unlink()
+
+        shm_landcover = shared_memory.SharedMemory(
+            name=landcover_shm_info['shared_data_name'])
+        shm_landcover.close()
+        shm_landcover.unlink()
+    except Exception as e:
+        print(f"Warning: Could not clean up shared memory: {e}")
+
+    # Clean up temporary directory
+    temp_dir.cleanup()
