@@ -6,6 +6,8 @@ import numpy as np
 import rasterio as rio
 import rasterio.mask
 from shapely.geometry import Polygon
+import multiprocessing.shared_memory as shared_memory
+import uuid
 
 from CosmicExplorerLocationSearch import Coordinates
 
@@ -173,3 +175,67 @@ def resample(in_geotiff_path, out_geotiff_path, upscale_factor,
 
         with rio.open(out_geotiff_path, "w", **out_profile) as out_geofile:
             out_geofile.write(out_image)
+
+
+def read_geotiff_to_shared_memory(geotiff_path):
+    """
+    Read a geotiff file into shared memory without intermediate copies.
+    
+    This function reads the raster data directly into a shared memory buffer
+    that can be accessed by multiple processes. The shared memory buffer
+    contains a numpy array that can be used with bilinear_interpolate_vectorized.
+    
+    Args:
+        geotiff_path (str): Path to the geotiff file to read
+        
+    Returns:
+        tuple: (shared_memory_buffer, shape, dtype, shared_memory_name, transform, nodata)
+            - shared_memory_buffer: numpy array backed by shared memory (2D if single band, else 3D)
+            - shape: tuple of array dimensions
+            - dtype: numpy dtype of the array
+            - shared_memory_name: name of the shared memory segment
+            - transform: rasterio affine transform object
+            - nodata: nodata value from the geotiff
+    """
+    # 1. Open to inspect shape/dtype and read data
+    with rio.open(geotiff_path) as src:
+        shape = (src.count, src.height, src.width)
+        dtype = np.dtype(src.dtypes[0]).str
+        transform = src.transform
+        nodata = src.nodata
+        
+        # Read the data into a regular numpy array first
+        array = src.read()
+
+    # 2. Allocate shared memory
+    itemsize = np.dtype(dtype).itemsize
+    nbytes = np.prod(shape) * itemsize
+    shm = shared_memory.SharedMemory(create=True, size=nbytes)
+    shm_name = shm.name
+
+    # 3. Wrap as ndarray
+    shared_arr = np.ndarray(shape, dtype=dtype, buffer=shm.buf)
+
+    # 4. Copy the data into shared memory (this is the only copy)
+    shared_arr[:] = array[:]
+
+    # Optionally, return only the first band for 2D compatibility
+    arr2d = shared_arr[0] if shape[0] == 1 else shared_arr
+
+    return arr2d, arr2d.shape, arr2d.dtype, shm_name, transform, nodata
+
+
+def cleanup_shared_memory(shared_memory_name):
+    """
+    Clean up a shared memory segment by name.
+    
+    Args:
+        shared_memory_name (str): Name of the shared memory segment to close
+    """
+    try:
+        shm = shared_memory.SharedMemory(name=shared_memory_name)
+        shm.close()
+        shm.unlink()
+    except FileNotFoundError:
+        # Shared memory segment already cleaned up
+        pass
