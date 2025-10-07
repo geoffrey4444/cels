@@ -118,6 +118,15 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     if (rotation_angles.shape[0] != number_of_rotation_angles):
         print("ERROR! Shape of rotation_angles incorrect")
 
+    # Set up shared memory if enabled
+    shared_memory_info = None
+    if raster_info["use_shared_memory"]:
+        import CosmicExplorerLocationSearch.Geotiff as Geotiff
+        shared_memory_info = {}
+        for raster_type, raster_path in raster_info["paths"].items():
+            shared_memory_info[raster_type] = Geotiff.read_bsq_to_shared_memory(raster_path)
+        print(f"Loaded {len(shared_memory_info)} rasters into shared memory")
+
     # Set up arrays to hold the results
     # Keys should match keys in dict returned by Score.score_detector_from_grid
     result = {
@@ -163,7 +172,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     # automatically removed from the generator expression.
     params_for_futures = ((raster_info["paths"], raster_info["no_data_value"],
                            arm_length_meters, dl_for_arms_meters,
-                           opening_angle, rotation_angle, x, y, i, j, row, col)
+                           opening_angle, rotation_angle, x, y, i, j, row, col,
+                           raster_info["use_shared_memory"], shared_memory_info)
                           for i, opening_angle in enumerate(opening_angles)
                           for j, rotation_angle in enumerate(rotation_angles)
                           for row, y in enumerate(detector_ys)
@@ -340,6 +350,19 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     print(str(datetime.now()) + " -- Outputting shapefiles")
     Detector.write_shapefile_of_detectors(
         detectors, path_for_output + "/best_detectors.shp")
+    
+    # Clean up shared memory if used
+    if shared_memory_info is not None:
+        import multiprocessing.shared_memory as shared_memory
+        for raster_type, shm_info in shared_memory_info.items():
+            try:
+                shm = shared_memory.SharedMemory(name=shm_info["shared_data_name"])
+                shm.close()
+                shm.unlink()
+            except Exception as e:
+                print(f"Warning: Could not clean up shared memory for {raster_type}: {e}")
+        print("Cleaned up shared memory")
+    
     print(str(datetime.now()) + " -- Complete!")
 
 
@@ -417,6 +440,9 @@ def main():
     p.add_argument('--njobs',
                    type=int,
                    help="Number of jobs to run in parallel")
+    p.add_argument('--use-shared-memory',
+                   action='store_true',
+                   help="Use shared memory for raster data instead of reading from files")
     args = p.parse_args()
     print(Score.__file__)
     print(args)
@@ -429,8 +455,16 @@ def main():
         "bounds": None,
         "transform": None,
         "profile": None,
-        "paths": None
+        "paths": None,
+        "use_shared_memory": args.use_shared_memory
     }
+
+    # Check file extensions if using shared memory
+    if args.use_shared_memory:
+        if not args.elevation.endswith('.bsq'):
+            raise ValueError("When using --use-shared-memory, elevation file must have .bsq extension")
+        if not args.landcover.endswith('.bsq'):
+            raise ValueError("When using --use-shared-memory, landcover file must have .bsq extension")
 
     # Use the elevation file to determine default raster information.
     with rio.open(args.elevation) as geofile:

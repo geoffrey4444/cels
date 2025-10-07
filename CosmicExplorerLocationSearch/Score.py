@@ -5,7 +5,7 @@ import rasterio as rio
 from scipy import optimize
 from scipy.optimize import least_squares as least_squares
 
-from CosmicExplorerLocationSearch import Detector
+from CosmicExplorerLocationSearch import Detector, Geotiff
 
 
 def pixel_data_from_rasters(raster_file_dict, detector):
@@ -33,6 +33,39 @@ def pixel_data_from_rasters(raster_file_dict, detector):
                 for sample in raster_file.sample(result[raster]["coords"])
             ])
     return result
+
+
+def pixel_data_from_shared_memory(shm_name, transform, nodata_value, detector,
+                                  shape, dtype):
+    """Inputs:
+         shm_name: name of the shared memory region containing raster data
+         transform: rasterio affine transform for the raster
+         nodata_value: value used to represent no data in the raster
+         detector: output of Detector.detector()
+         shape: tuple of (height, width) for the raster
+         dtype: numpy data type of the raster data
+
+       Returns: 
+         A dictionary containing the following:
+           * "coords" = x,y coords of points along detector arms
+           * "values" = value at x,y from this raster
+       Note: this function reads pixel data from shared memory,
+       which allows multiple processes to access the same data efficiently.
+    """
+    # Get the shared memory array
+    array, shm = Geotiff.get_shared_memory_array(shm_name, shape, dtype)
+
+    # Sample the data using the coordinates from the detector
+    values = Geotiff.sample_from_array(array, transform, nodata_value,
+                                       detector["arms_xy"])
+
+    # Clean up the shared memory connection
+    shm.close()
+
+    return {
+        "coords": detector["arms_xy"],
+        "values": np.array(values),
+    }
 
 
 # These descriptions and codes follow the National Land Cover DatabaseLand Cover
@@ -207,7 +240,7 @@ def ideal_beamtube_depth_meters(detector):
 
 
 def func_to_minimize_by_tilting_detector_plane(
-    params, detector, elevation_pixel_data_average_removed):
+        params, detector, elevation_pixel_data_average_removed):
     """
     Input:
       params: tuple of 3 floats:
@@ -392,15 +425,19 @@ def elevation_and_tilt_score(detector, elevation_pixel_data):
 
 
 def suitability_scores(
-    raster_paths,
-    no_data_value,
-    detector,  #
-    include_pixel_data):
+        raster_paths,
+        no_data_value,
+        detector,  #
+        include_pixel_data,
+        use_shared_memory=False,
+        shared_memory_info=None):
     """
     Input:
       detector: output of Detector.detector()
       include_pixel_data: if true, add a key to the returned scores
                           dictionary holding the pixel_data (e.g. for plotting)
+      use_shared_memory: if true, use shared memory for raster data
+      shared_memory_info: dict containing shared memory metadata (required if use_shared_memory=True)
     Output:
       scores: dictionary of suitability scores, including "total" which is the 
               sum of the other scores in the dictionary
@@ -409,7 +446,22 @@ def suitability_scores(
        repeatedly for many detectors. To just get pixel data for one or 
        a few detectors, use pixel_data_from_raster_files().
     """
-    pix_data = pixel_data_from_rasters(raster_paths, detector)
+    if use_shared_memory:
+        if shared_memory_info is None:
+            raise ValueError("shared_memory_info must be provided when use_shared_memory=True")
+        pix_data = {}
+        for raster_type in ["elevation", "landcover"]:
+            shm_info = shared_memory_info[raster_type]
+            pix_data[raster_type] = pixel_data_from_shared_memory(
+                shm_info["shared_data_name"],
+                shm_info["affine_transform"],
+                shm_info["nodata_value"],
+                detector,
+                shm_info["shape"],
+                shm_info["dtype"]
+            )
+    else:
+        pix_data = pixel_data_from_rasters(raster_paths, detector)
     # If L contains pixels in ocean (0) or other country (101-103), assign
     # nodata to scores and return
     if ((0 in pix_data["landcover"]["values"])
@@ -422,10 +474,14 @@ def suitability_scores(
         factor_to_make_no_value_large = 1000000000
         return {
             # Take abs of no_data_value in case that value is negative
-            "elevation_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "tilt_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "landcover_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "total_score": factor_to_make_no_value_large * np.abs(no_data_value)
+            "elevation_score":
+            factor_to_make_no_value_large * np.abs(no_data_value),
+            "tilt_score":
+            factor_to_make_no_value_large * np.abs(no_data_value),
+            "landcover_score":
+            factor_to_make_no_value_large * np.abs(no_data_value),
+            "total_score":
+            factor_to_make_no_value_large * np.abs(no_data_value)
         }
 
     elevation_tilt_scores = elevation_and_tilt_score(
@@ -465,6 +521,8 @@ def score_detector_from_grid(
     rotation_angle_j,
     vertex_row,
     vertex_col,
+    use_shared_memory=False,
+    shared_memory_info=None,
 ):
     """
     Score one detector from a 2D array of detector vertex locations. Note: 
@@ -496,28 +554,43 @@ def score_detector_from_grid(
                                  opening_angle_degrees, rotation_angle_degrees,
                                  vertex_x, vertex_y)
     try:
-        scores = suitability_scores(raster_paths, no_data_value, detector, False)
+        scores = suitability_scores(raster_paths, no_data_value, detector,
+                                    False, use_shared_memory, shared_memory_info)
     except Exception as error:
         print("\nUnexpected error scoring detector:")
         print(error)
-        
+
         # Return no data for this detector
         factor_to_make_no_value_large = 1000000000
         result = {
-            "arm_length_meters": arm_length_meters,
-            "dl_for_arms_meters": dl_for_arms_meters,
-            "opening_angle_degrees": opening_angle_degrees,
-            "rotation_angle_degrees": rotation_angle_degrees,
-            "vertex_x": vertex_x,
-            "vertex_y": vertex_y,
-            "opening_angle_i": opening_angle_i,
-            "rotation_angle_j": rotation_angle_j,
-            "vertex_row": vertex_row,
-            "vertex_col": vertex_col,
-            "elevation_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "tilt_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "landcover_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "total_score": factor_to_make_no_value_large * np.abs(no_data_value)
+            "arm_length_meters":
+            arm_length_meters,
+            "dl_for_arms_meters":
+            dl_for_arms_meters,
+            "opening_angle_degrees":
+            opening_angle_degrees,
+            "rotation_angle_degrees":
+            rotation_angle_degrees,
+            "vertex_x":
+            vertex_x,
+            "vertex_y":
+            vertex_y,
+            "opening_angle_i":
+            opening_angle_i,
+            "rotation_angle_j":
+            rotation_angle_j,
+            "vertex_row":
+            vertex_row,
+            "vertex_col":
+            vertex_col,
+            "elevation_score":
+            factor_to_make_no_value_large * np.abs(no_data_value),
+            "tilt_score":
+            factor_to_make_no_value_large * np.abs(no_data_value),
+            "landcover_score":
+            factor_to_make_no_value_large * np.abs(no_data_value),
+            "total_score":
+            factor_to_make_no_value_large * np.abs(no_data_value)
         }
         print("Detector that failed:")
         print(result)

@@ -32,7 +32,7 @@ dependencies = [
 [project.scripts]
 findsites = "CosmicExplorerLocationSearch.FindSites:main"
 getmoreLs = "CosmicExplorerLocationSearch.GetMoreLs:main"
-
+geotiff2bsq = "CosmicExplorerLocationSearch.geotiff2bsq:main"
 
 [project.urls]
 Homepage = "https://gitlab.com/cosmic-explorer/cels"
