@@ -3,6 +3,15 @@ This python package contains code to assist with identifying and evaluating
 potential locations for [Cosmic Explorer](https://cosmicexplorer.org), a planned
 next-generation gravitational-wave observatory.
 
+## Disclaimer
+***Example candidate layouts evaluated using this package are based solely on geographical information. 
+No decision has been 
+made on Cosmic Explorer locations. Observatory locations and configurations will be co-developed in 
+consultation with local and Indigenous communities. Any future decision to build will follow established 
+protocols, including NEPA and NHPA processes, 
+and will involve representatives from relevant federal agencies, the National Science Foundation, local governments,
+Native Nations, and ancestral stewards.***
+
 ## Installation
 To install this code in your python environment, you can run the 
 following terminal command:
