@@ -72,6 +72,26 @@ def random_detector(scores=None, length_bounds=None, center=None):
             opening_angle_degrees, rotation_angle_degrees, scores, detector)
 
 
+# Generate a random detector with fixed arm length, random orientation, opening
+# angles within 20 degrees of 90. The default vertex location is 
+# arbitrary and does not indicate any decision to build.
+def random_plausible_detector(arm_length_meters=40000.0,
+                              dl_for_arms_meters=100.0,
+                              vertex_x0=-704330.0,
+                              vertex_y0=1188917.0,
+                              vertex_spread_meters=10000.0):
+    return Detector.detector(
+        arm_length_meters=arm_length_meters,
+        dl_for_arms_meters=dl_for_arms_meters,
+        opening_angle_degrees=np.random.uniform(65, 115),
+        rotation_angle_degrees=np.random.uniform(0, 360),
+        vertex_x=-vertex_x0 +
+        np.random.uniform(-vertex_spread_meters, vertex_spread_meters),
+        vertex_y=vertex_y0 +
+        np.random.uniform(-vertex_spread_meters, vertex_spread_meters),
+    )
+
+
 def profile_for_random_geotiff(width):
     # Make a 40km x 40km raster empty raster file, with latitude and
     # longitude located in the United States (New Mexico),
