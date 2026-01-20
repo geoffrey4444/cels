@@ -28,8 +28,8 @@ def test_detector():
     assert detector["rotation_angle_degrees"] == rotation_angle_degrees
 
     # Check that the arms have the correct number of points
-    sample_points_per_arm = int(np.round(arm_length_meters /
-                                        dl_for_arms_meters))
+    sample_points_per_arm = int(
+        np.round(arm_length_meters / dl_for_arms_meters))
     number_of_sample_points = 1 + 2 * int(sample_points_per_arm)
     assert detector["arms_xy"].shape[1] == 2
     assert detector["arms_xy"].shape[0] == number_of_sample_points
@@ -78,7 +78,7 @@ def test_detector():
     # test case with scores provided
     scores = random_scores()
 
-    # test that distance to vertex has min zero, max arm_length_meters, and 
+    # test that distance to vertex has min zero, max arm_length_meters, and
     # spacing dl_for_arms_meters. Also check distance from vertex of
     # vertex pixel is zero.
     dist_from_vertex = detector["distance_from_vertex_meters"]
@@ -91,6 +91,88 @@ def test_detector():
     _, _, _, _, _, _, scores, detector_with_scores = random_detector(
         random_scores())
     assert detector_with_scores["scores"] == scores
+
+
+def test_detector_from_points_xy():
+    detector = random_plausible_detector(
+        arm_length_meters=np.random.uniform(0.0, 1.0) * 1000.0 + 40000.0,
+        vertex_x0=-704330 + np.random.uniform(-100.0, 100.0),
+        vertex_y0=1188917 + np.random.uniform(-100.0, 100.0))
+    # Check that detector_from_points_xy works no matter whether the X or Y
+    # end station's (x,y) coordinates are given first. 50% chance of 
+    # testing either choice each time this test is run.
+    if np.random.rand() < 0.5:
+        end1_x_meters = detector[
+            "vertex_x"] + detector["arm_length_meters"] * np.cos(
+                detector["rotation_angle_degrees"] * np.pi / 180.0)
+        end1_y_meters = detector[
+            "vertex_y"] + detector["arm_length_meters"] * np.sin(
+                detector["rotation_angle_degrees"] * np.pi / 180.0)
+        end2_x_meters = detector[
+            "vertex_x"] + detector["arm_length_meters"] * np.cos(
+                (detector["rotation_angle_degrees"] +
+                 detector["opening_angle_degrees"]) * np.pi / 180.0)
+        end2_y_meters = detector[
+            "vertex_y"] + detector["arm_length_meters"] * np.sin(
+                (detector["rotation_angle_degrees"] +
+                 detector["opening_angle_degrees"]) * np.pi / 180.0)
+    else:
+        end2_x_meters = detector[
+            "vertex_x"] + detector["arm_length_meters"] * np.cos(
+                detector["rotation_angle_degrees"] * np.pi / 180.0)
+        end2_y_meters = detector[
+            "vertex_y"] + detector["arm_length_meters"] * np.sin(
+                detector["rotation_angle_degrees"] * np.pi / 180.0)
+        end1_x_meters = detector[
+            "vertex_x"] + detector["arm_length_meters"] * np.cos(
+                (detector["rotation_angle_degrees"] +
+                 detector["opening_angle_degrees"]) * np.pi / 180.0)
+        end1_y_meters = detector[
+            "vertex_y"] + detector["arm_length_meters"] * np.sin(
+                (detector["rotation_angle_degrees"] +
+                 detector["opening_angle_degrees"]) * np.pi / 180.0)
+    detector_from_points_xy = Detector.detector_from_points_xy(
+        detector["vertex_x"], detector["vertex_y"], end1_x_meters,
+        end1_y_meters, end2_x_meters, end2_y_meters,
+        detector["arm_length_meters"], detector["dl_for_arms_meters"])
+    assert detector_from_points_xy["vertex_x"] == detector["vertex_x"]
+    assert detector_from_points_xy["vertex_y"] == detector["vertex_y"]
+    assert detector_from_points_xy["arm_length_meters"] == detector[
+        "arm_length_meters"]
+    assert detector_from_points_xy["dl_for_arms_meters"] == detector[
+        "dl_for_arms_meters"]
+    eps = 1.e-6  # arctan2 for angles introduces some roundoff error
+    assert np.abs(detector_from_points_xy["opening_angle_degrees"] -
+                  detector["opening_angle_degrees"]) < eps
+    assert np.abs(detector_from_points_xy["rotation_angle_degrees"] -
+                  detector["rotation_angle_degrees"]) < eps
+    assert np.all(
+        np.abs(detector_from_points_xy["arms_xy"] - detector["arms_xy"]) < eps)
+
+    detector_from_points_xy_no_arm_length = Detector.detector_from_points_xy(
+        detector["vertex_x"], detector["vertex_y"], end1_x_meters,
+        end1_y_meters, end2_x_meters, end2_y_meters, None,
+        detector["dl_for_arms_meters"])
+
+    assert np.abs(detector_from_points_xy_no_arm_length["arm_length_meters"] -
+                  detector["arm_length_meters"]) < eps
+    assert detector_from_points_xy_no_arm_length[
+        "dl_for_arms_meters"] == detector["dl_for_arms_meters"]
+    assert np.abs(
+        detector_from_points_xy_no_arm_length["opening_angle_degrees"] -
+        detector["opening_angle_degrees"]) < eps
+    assert np.abs(
+        detector_from_points_xy_no_arm_length["rotation_angle_degrees"] -
+        detector["rotation_angle_degrees"]) < eps
+    assert detector_from_points_xy_no_arm_length["vertex_x"] == detector[
+        "vertex_x"]
+    assert detector_from_points_xy_no_arm_length["vertex_y"] == detector[
+        "vertex_y"]
+    assert detector_from_points_xy_no_arm_length["scores"] == detector[
+        "scores"]
+    assert np.all(
+        np.abs(detector_from_points_xy_no_arm_length["arms_xy"] -
+               detector["arms_xy"]) < eps)
 
 
 def test_write_shapefile_of_detectors():

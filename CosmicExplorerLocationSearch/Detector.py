@@ -98,6 +98,80 @@ def detector(arm_length_meters,
     }
 
 
+def detector_from_points_xy(
+    vertex_x,
+    vertex_y,
+    end1_x_meters,
+    end1_y_meters,
+    end2_x_meters,
+    end2_y_meters,
+    arm_length_meters,
+    dl_for_arms_meters,
+    scores=None
+):
+    """ Computes a detector from a vertex and two end points.
+    Inputs:
+      vertex_x: x coordinate of vertex (meters)
+      vertex_y: y coordinate of vertex (meters)
+      end1_x_meters: x coordinate of first end point (meters)
+      end1_y_meters: y coordinate of first end point (meters)
+      end2_x_meters: x coordinate of second end point (meters)
+      end2_y_meters: y coordinate of second end point (meters)
+      arm_length_meters: length of each arm (meters). If None, calculate
+                         from vertex and end points.
+      dl_for_arms_meters: distance between sample points (meters)
+
+    Returns: dictionary containing the same keys as detector(), specifically:
+      vertex_x
+      vertex_y
+      arm_length_meters = length of each arm in meters
+      dl_for_arms_meters = distance between sample points
+      opening_angle_degrees
+      rotation_angle_degrees
+      arms_xy: x,y coordinates (meters) of arm, order (xend ... vertex ... yend)
+      dist_from_vertex: distance from vertex, order (xend ... vertex ... yend)
+      vertex_pixel: value of n such that nth element in arms_xy is the vertex
+      scores: the scores provided (or None if no scores provided)
+    """
+    if arm_length_meters is None:
+        arm_length_meters = np.sqrt(
+            (end1_x_meters - vertex_x)**2 + (end1_y_meters - vertex_y)**2)
+    print(f"arm_length_meters: {arm_length_meters}")
+    vertex_xy = [vertex_x, vertex_y]
+    end1_xy = [end1_x_meters, end1_y_meters]
+    end2_xy = [end2_x_meters, end2_y_meters]
+
+    angle1 = np.mod(
+        np.arctan2(end1_xy[1] - vertex_xy[1], end1_xy[0] - vertex_xy[0]),
+        2 * np.pi)
+    angle2 = np.mod(
+        np.arctan2(end2_xy[1] - vertex_xy[1], end2_xy[0] - vertex_xy[0]),
+        2 * np.pi)
+
+    angle1_degrees = angle1 * 180.0 / np.pi
+    angle2_degrees = angle2 * 180.0 / np.pi
+
+    angle_diff_degrees_1m2 = np.mod(angle1_degrees - angle2_degrees, 360)
+    angle_diff_degrees_2m1 = np.mod(angle2_degrees - angle1_degrees, 360)
+
+    if angle_diff_degrees_1m2 < angle_diff_degrees_2m1:
+        opening_angle_degrees = angle_diff_degrees_1m2
+        rotation_angle_degrees = angle2_degrees
+    else:
+        opening_angle_degrees = angle_diff_degrees_2m1
+        rotation_angle_degrees = angle1_degrees
+
+    return detector(
+        arm_length_meters=arm_length_meters,
+        dl_for_arms_meters=dl_for_arms_meters,
+        opening_angle_degrees=opening_angle_degrees,
+        rotation_angle_degrees=rotation_angle_degrees,
+        vertex_x=vertex_x,
+        vertex_y=vertex_y,
+        scores=scores,
+    )
+
+
 def write_shapefile_of_detectors(detectors, output_file_path):
     """
     Write a shapefile containing one or more detectors for visualization in GIS.
