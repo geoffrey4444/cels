@@ -2,6 +2,7 @@
 # See LICENSE for details.
 import numpy as np
 import rasterio as rio
+import geopandas as gpd
 from scipy import optimize
 from scipy.optimize import least_squares as least_squares
 
@@ -424,10 +425,67 @@ def elevation_and_tilt_score(detector, elevation_pixel_data):
     return result
 
 
+
+# These descriptions follow the RTTYP (Route Type Code) classification scheme,
+# as defined by https://www.census.gov/library/reference/code-lists/route-type-codes.html
+
+
+road_labels = {
+    "C": "County",
+    "I": "Interstate",
+    "M": "Common Name",
+    "O": "Other",
+    "S": "State",
+    "U": "US",
+}
+
+
+# Associated cost of roads per road type. These are uncalibrated for now,
+# associating the highest cost to interstate highways. US highways are
+# given the second highest cost. Other and Common Name roads
+# can vary in size and usage and are given a score of 50. County and "other"
+# roads are assigned a cost of 10. 
+
+road_score_by_type = {
+    "C": 10,
+    "I": 100,
+    "M":50,
+    "O":10,
+    "S":50,
+    "U":75,
+}
+
+
+def roads_scores(roads_shapefile_path, detector):
+    """
+    Input:
+        detector: output of Detector.detector()
+        roads_shapefile_path: path to a shapefile containing roads information
+    Output:
+        result:
+            *"crossings": A GeoDataFrame containing all crossing points with major
+            US roads, the RTTYP road type, the full road name
+            *"score_roads": A "roads" suitability score for this detector
+    """
+    roads = gpd.read_file(roads_shapefile_path).to_crs(5070)
+    detector_df = gpd.GeoDataFrame(geometry=[Detector.detector_to_multiline_string(detector)], crs='EPSG:5070')
+    crossings = gpd.overlay(roads, detector_df, how='intersection', keep_geom_type=False)
+    score_roads = 0
+    for c in crossings.itertuples():
+        score_roads += road_score_by_type[c.RTTYP]
+    result = {}
+    result["crossings"] = crossings
+    result["score_roads"] = score_roads
+    return result
+
+
+
+
 def suitability_scores(
         raster_paths,
+        shapefiles_paths,
         no_data_value,
-        detector,  #
+        detector,
         include_pixel_data,
         use_shared_memory=False,
         shared_memory_info=None):
@@ -474,42 +532,47 @@ def suitability_scores(
         factor_to_make_no_value_large = 1000000000
         return {
             # Take abs of no_data_value in case that value is negative
-            "elevation_score":
-            factor_to_make_no_value_large * np.abs(no_data_value),
-            "tilt_score":
-            factor_to_make_no_value_large * np.abs(no_data_value),
-            "landcover_score":
-            factor_to_make_no_value_large * np.abs(no_data_value),
-            "total_score":
-            factor_to_make_no_value_large * np.abs(no_data_value)
+            "elevation_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "tilt_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "landcover_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "roads_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "total_score": factor_to_make_no_value_large * np.abs(no_data_value)
         }
 
     elevation_tilt_scores = elevation_and_tilt_score(
         detector, pix_data["elevation"]["values"])
     elevation_score = elevation_tilt_scores["elevation"]
     tilt_score = elevation_tilt_scores["tilt"]
+    roads_path = shapefiles_paths["roads"]
+    roads = roads_scores(roads_path, detector)
+    roads_score = roads["score_roads"]
+    roads_crossings_df = roads["crossings"]
     landcover = landcover_score(pix_data["landcover"]["values"],
                                 detector["dl_for_arms_meters"])
-    total_score = elevation_score + tilt_score + landcover
+    total_score = elevation_score + tilt_score + landcover + roads_score
     if include_pixel_data:
         return {
             "elevation_score": elevation_score,
             "tilt_score": tilt_score,
             "landcover_score": landcover,
+            "roads_score": roads_score,
             "total_score": total_score,
-            "pixel_data": pix_data
+            "pixel_data": pix_data,
+            "crossings_data": roads_crossings_df
         }
     else:
         return {
             "elevation_score": elevation_score,
             "tilt_score": tilt_score,
             "landcover_score": landcover,
+            "roads_score": roads_score,
             "total_score": total_score
         }
 
 
 def score_detector_from_grid(
     raster_paths,
+    shapefiles_paths,
     no_data_value,
     arm_length_meters,
     dl_for_arms_meters,
@@ -528,8 +591,8 @@ def score_detector_from_grid(
     Score one detector from a 2D array of detector vertex locations. Note: 
     this function is meant to be called asynchronously.
     Input:
-      raster_paths: dict containing paths to rasters keyed by "elevation"
-                    and "landcover"
+      raster_paths: dict containing paths to rasters keyed by "elevation",
+                    "landcover" and "roads"
       no_data_value: integer used to represent no data in output rasters
       arm_length_meters: detector arm length (meters)
       dl_for_arms_meters: distance between sample points (meters)
@@ -554,7 +617,7 @@ def score_detector_from_grid(
                                  opening_angle_degrees, rotation_angle_degrees,
                                  vertex_x, vertex_y)
     try:
-        scores = suitability_scores(raster_paths, no_data_value, detector,
+        scores = suitability_scores(raster_paths, shapefiles_paths, no_data_value, detector,
                                     False, use_shared_memory, shared_memory_info)
     except Exception as error:
         print("\nUnexpected error scoring detector:")
@@ -563,34 +626,21 @@ def score_detector_from_grid(
         # Return no data for this detector
         factor_to_make_no_value_large = 1000000000
         result = {
-            "arm_length_meters":
-            arm_length_meters,
-            "dl_for_arms_meters":
-            dl_for_arms_meters,
-            "opening_angle_degrees":
-            opening_angle_degrees,
-            "rotation_angle_degrees":
-            rotation_angle_degrees,
-            "vertex_x":
-            vertex_x,
-            "vertex_y":
-            vertex_y,
-            "opening_angle_i":
-            opening_angle_i,
-            "rotation_angle_j":
-            rotation_angle_j,
-            "vertex_row":
-            vertex_row,
-            "vertex_col":
-            vertex_col,
-            "elevation_score":
-            factor_to_make_no_value_large * np.abs(no_data_value),
-            "tilt_score":
-            factor_to_make_no_value_large * np.abs(no_data_value),
-            "landcover_score":
-            factor_to_make_no_value_large * np.abs(no_data_value),
-            "total_score":
-            factor_to_make_no_value_large * np.abs(no_data_value)
+            "arm_length_meters": arm_length_meters,
+            "dl_for_arms_meters": dl_for_arms_meters,
+            "opening_angle_degrees": opening_angle_degrees,
+            "rotation_angle_degrees": rotation_angle_degrees,
+            "vertex_x": vertex_x,
+            "vertex_y": vertex_y,
+            "opening_angle_i": opening_angle_i,
+            "rotation_angle_j": rotation_angle_j,
+            "vertex_row": vertex_row,
+            "vertex_col": vertex_col,
+            "elevation_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "tilt_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "landcover_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "roads_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "total_score": factor_to_make_no_value_large * np.abs(no_data_value)
         }
         print("Detector that failed:")
         print(result)
@@ -611,6 +661,7 @@ def score_detector_from_grid(
         "elevation_score": scores["elevation_score"],
         "tilt_score": scores["tilt_score"],
         "landcover_score": scores["landcover_score"],
+        "roads_score": scores["roads_score"],
         "total_score": scores["total_score"]
     }
     return result

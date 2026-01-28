@@ -7,7 +7,8 @@ from pyproj import CRS
 import rasterio as rio
 from rasterio.enums import Resampling
 import rasterio.mask
-from shapely import LineString
+import geopandas as gpd
+from shapely.geometry import LineString, MultiLineString
 
 from CosmicExplorerLocationSearch import Coordinates
 
@@ -172,6 +173,35 @@ def detector_from_points_xy(
     )
 
 
+def detector_to_multiline_string(detector):
+    #Returns a geopandas dataframe for a given detector object. This is required
+    #in the roads scoring, since that layer does not use rasters
+    vert_x = detector["vertex_x"]
+    vert_y = detector["vertex_y"]
+    xend_x = detector["arms_xy"][0][0]
+    xend_y = detector["arms_xy"][0][1]
+    yend_x = detector["arms_xy"][-1][0]
+    yend_y = detector["arms_xy"][-1][1]
+    xarm_line = LineString([[vert_x, vert_y], [xend_x, xend_y]])
+    yarm_line = LineString([[vert_x, vert_y], [yend_x, yend_y]])
+    L_multiline = MultiLineString([xarm_line, yarm_line])
+    return L_multiline
+
+
+def detector_to_line_string(detector):
+    #Returns a geopandas dataframe for a given detector object. This is required
+    #in the roads scoring, since that layer does not use rasters
+    vert_x = detector["vertex_x"]
+    vert_y = detector["vertex_y"]
+    xend_x = detector["arms_xy"][0][0]
+    xend_y = detector["arms_xy"][0][1]
+    yend_x = detector["arms_xy"][-1][0]
+    yend_y = detector["arms_xy"][-1][1]
+    xarm_line = LineString([[vert_x, vert_y], [xend_x, xend_y]])
+    yarm_line = LineString([[vert_x, vert_y], [yend_x, yend_y]])
+    return xarm_line, yarm_line
+
+
 def write_shapefile_of_detectors(detectors, output_file_path):
     """
     Write a shapefile containing one or more detectors for visualization in GIS.
@@ -199,6 +229,7 @@ def write_shapefile_of_detectors(detectors, output_file_path):
             "elev_score": "float",
             "tilt_score": "float",
             "lc_score": "float",
+            "road_score": "float",
             "tot_score": "float",
         }
     }
@@ -224,6 +255,7 @@ def write_shapefile_of_detectors(detectors, output_file_path):
                 "elev_score": -9999.0,
                 "tilt_score": -9999.0,
                 "lc_score": -9999.0,
+                "road_score": -9999.0,
                 "tot_score": -9999.0,
             }
             if detector["scores"] != None:
@@ -233,17 +265,10 @@ def write_shapefile_of_detectors(detectors, output_file_path):
                     "tilt_score"]
                 detector_properties["lc_score"] = detector["scores"][
                     "landcover_score"]
+                detector_properties["road_score"] = detector["scores"]["roads_score"]
                 detector_properties["tot_score"] = detector["scores"][
                     "total_score"]
-
-            vert_x = detector["vertex_x"]
-            vert_y = detector["vertex_y"]
-            xend_x = detector["arms_xy"][0][0]
-            xend_y = detector["arms_xy"][0][1]
-            yend_x = detector["arms_xy"][-1][0]
-            yend_y = detector["arms_xy"][-1][1]
-            xarm_line = LineString([[vert_x, vert_y], [xend_x, xend_y]])
-            yarm_line = LineString([[vert_x, vert_y], [yend_x, yend_y]])
+            xarm_line, yarm_line = detector_to_line_string(detector)    
 
             element_to_write["geometry"] = xarm_line
             element_to_write["properties"] = detector_properties
