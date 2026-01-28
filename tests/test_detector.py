@@ -229,6 +229,8 @@ def test_write_shapefile_of_detectors():
                           detectors_and_inputs[i][6]["tilt_score"] < eps)
             assert np.abs(output[2 * i].properties["lc_score"] -
                           detectors_and_inputs[i][6]["landcover_score"] < eps)
+            assert np.abs(output[2 * i].properties["road_score"] -
+                          detectors_and_inputs[i][6]["roads_score"] < eps)
             assert np.abs(output[2 * i].properties["tot_score"] -
                           detectors_and_inputs[i][6]["total_score"] < eps)
 
@@ -251,5 +253,7 @@ def test_write_shapefile_of_detectors():
                           detectors_and_inputs[i][6]["tilt_score"]) < eps
             assert np.abs(output[2 * i + 1].properties["lc_score"] -
                           detectors_and_inputs[i][6]["landcover_score"]) < eps
+            assert np.abs(output[2 * i + 1].properties["road_score"] -
+                          detectors_and_inputs[i][6]["roads_score"]) < eps
             assert np.abs(output[2 * i + 1].properties["tot_score"] -
                           detectors_and_inputs[i][6]["total_score"]) < eps

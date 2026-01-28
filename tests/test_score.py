@@ -20,6 +20,7 @@ def test_pixel_data_from_rasters():
         "elevation": temp_path + "/elevation.tif",
         "landcover": temp_path + "/landcover.tif"
     }
+    shapefiles = {"roads": temp_path + "/roads.shp"}
     profile = None
     bounds = None
 
@@ -29,6 +30,10 @@ def test_pixel_data_from_rasters():
     random_raster_data = {
         "elevation": random_geotiff(rasters["elevation"], profile),
         "landcover": random_geotiff(rasters["landcover"], profile)
+    }
+    # Random shapefile for a 40km x 40km area in New Mexico
+    random_shapefile_data = {
+        "roads": random_roads_shapefile(shapefiles["roads"], bounds)
     }
 
     # Place a detector in a corner of the raster, aligned with the pixels,
@@ -446,7 +451,10 @@ def test_suitability_scores():
         "elevation": temp_path + "/elevation.tif",
         "landcover": temp_path + "/landcover.tif"
     }
-
+    shapefiles = {
+        "roads": temp_path + "/roads.shp"
+    }
+    
     width = 40  # pixels
     profile, bounds = profile_for_random_geotiff(width)
     no_data_value = profile["nodata"]
@@ -455,6 +463,9 @@ def test_suitability_scores():
         random_elevation_geotiff_with_width(rasters["elevation"], width),
         "landcover":
         random_landcover_geotiff_with_width(rasters["landcover"], width)
+    }
+    random_shapefile_data = {
+        "roads": random_roads_shapefile(shapefiles["roads"], bounds)
     }
 
     # generate random detector inside sample image
@@ -472,11 +483,11 @@ def test_suitability_scores():
     detector = random_detector_properties[-1]
     pix_data = Score.pixel_data_from_rasters(rasters, detector)
 
-    scores = Score.suitability_scores(rasters, no_data_value, detector, True)
+    scores = Score.suitability_scores(rasters, shapefiles, no_data_value, detector, True)
 
     eps_pix_data = 1.e-12
     assert scores['total_score'] == scores["elevation_score"] + scores[
-        "tilt_score"] + scores["landcover_score"]
+        "tilt_score"] + scores["landcover_score"] + scores["roads_score"]
     for key in scores["pixel_data"]:
         assert np.max(
             np.abs(scores["pixel_data"][key]["values"] -
@@ -486,7 +497,7 @@ def test_suitability_scores():
                    pix_data[key]["coords"])) < eps_pix_data
 
     # Check that no pixel data returned when not requested
-    scores_no_pix = Score.suitability_scores(rasters, no_data_value, detector,
+    scores_no_pix = Score.suitability_scores(rasters, shapefiles, no_data_value, detector,
                                              False)
     assert "pixel_data" not in scores_no_pix.keys()
 
@@ -513,7 +524,7 @@ def test_suitability_scores():
     random_landcover_geotiff_with_width(
         rasters_check_omitted_values["landcover"], width, False)
     scores_check_omitted_values = Score.suitability_scores(
-        rasters_check_omitted_values, no_data_value, detector, False)
+        rasters_check_omitted_values, shapefiles, no_data_value, detector, False)
     for key in scores_check_omitted_values:
         # Scores return no_data * a big number (1e9), so that these scores
         # are never best for a given corner station location unless
@@ -536,6 +547,7 @@ def test_suitability_scores():
 
     result = Score.score_detector_from_grid(
         rasters,
+        shapefiles,
         no_data_value,
         arm_length_meters,
         dl_for_arms_meters,
@@ -562,6 +574,8 @@ def test_suitability_scores():
     for key in scores.keys():
         if key == "pixel_data":
             continue  # score_detector_from_grid() does not return pixel data
+        if key == "crossings_data":
+            continue  # score_detector_from_grid() does not roads crossings data
         assert result[key] == scores[key]
 
 

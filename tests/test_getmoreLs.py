@@ -42,7 +42,7 @@ def test_getmoreLs():
       random_detectors.append(random_detector(scores=detector_score,center=c))
   with open(scores_path, "w") as out_ascii:
       legend = "#opening_angle rotation_angle vertex_x vertex_y elevation_score"
-      legend += " tilt_score landcover_score total_score\n"
+      legend += " tilt_score landcover_score roads_score total_score\n"
       out_ascii.write(legend)
       for result in random_detectors:
           row_text = ""
@@ -59,9 +59,11 @@ def test_getmoreLs():
           row_text += str(
               result[-1]["scores"]["landcover_score"]) + " "
           row_text += str(
+              result[-1]["scores"]["roads_score"]) + " "
+          row_text += str(
               result[-1]["scores"]["total_score"]) + "\n"
           out_ascii.write(row_text)
-  os.system(f"sort -t ' ' -k8n {scores_path} > {ordered_scores_path}")
+  os.system(f"sort -t ' ' -k9n {scores_path} > {ordered_scores_path}")
 
   expected_scores_files = [
      "scores.csv",

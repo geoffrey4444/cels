@@ -18,12 +18,13 @@ def get_more_Ls(score_threshold, csvpath, outdir_path, arm_length, dl_arms, blob
             for row in reader:
                 if float(row["total_score"]) > score_threshold:
                     break
-                lon,lat = float(row["vertex_x"]), float(row["vertex_y"])
-                point_lonlat = Point(lon,lat) 
-                if area.contains(point_lonlat).any():
+                x,y = float(row["vertex_x"]), float(row["vertex_y"])
+                point_xy = Point(x,y) 
+                if area.contains(point_xy).any():
                     scores = {"elevation_score": float(row["elevation_score"]),
                           "tilt_score": float(row["tilt_score"]),
                           "landcover_score": float(row["landcover_score"]),
+                          "roads_score": float(row["roads_score"]),
                           "total_score": float(row["total_score"])}
                     detectors.append(Detector.detector(arm_length, dl_arms, 
                                  float(row["#opening_angle"]),
@@ -50,6 +51,7 @@ def get_more_Ls(score_threshold, csvpath, outdir_path, arm_length, dl_arms, blob
                     scores = {"elevation_score": float(row["elevation_score"]),
                           "tilt_score": float(row["tilt_score"]),
                           "landcover_score": float(row["landcover_score"]),
+                          "roads_score": float(row["roads_score"]),
                           "total_score": float(row["total_score"])}
                     detectors.append(Detector.detector(arm_length, dl_arms, 
                                  float(row["#opening_angle"]),
@@ -70,6 +72,7 @@ def get_more_Ls(score_threshold, csvpath, outdir_path, arm_length, dl_arms, blob
                 scores = {"elevation_score": float(row["elevation_score"]),
                           "tilt_score": float(row["tilt_score"]),
                           "landcover_score": float(row["landcover_score"]),
+                          "roads_score": float(row["roads_score"]),
                           "total_score": float(row["total_score"])}
                 detectors.append(Detector.detector(arm_length, dl_arms, 
                                  float(row["#opening_angle"]),

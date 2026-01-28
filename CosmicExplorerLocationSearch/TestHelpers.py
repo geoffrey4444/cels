@@ -4,6 +4,8 @@ from CosmicExplorerLocationSearch import Detector
 from CosmicExplorerLocationSearch import Score
 import random
 import numpy as np
+import geopandas as gpd
+from shapely.geometry import Point, LineString
 from pyproj import CRS, Transformer
 import rasterio as rio
 
@@ -15,11 +17,13 @@ def random_scores():
     elevation_score = random.uniform(0.0, 1000.0)
     tilt_score = random.uniform(0.0, 1000.0)
     landcover_score = random.uniform(0.0, 1000.0)
-    total_score = elevation_score + tilt_score + landcover_score
+    roads_score = random.uniform(0.0, 1000.0)
+    total_score = elevation_score + tilt_score + landcover_score + roads_score
     scores = {
         "elevation_score": elevation_score,
         "tilt_score": tilt_score,
         "landcover_score": landcover_score,
+        "roads_score": roads_score,
         "total_score": total_score,
     }
     return scores
@@ -33,19 +37,19 @@ def random_detector(scores=None, length_bounds=None, center=None):
     # Get x,y possible values
     xy_wkt = "EPSG:5070"
     xy_crs = CRS(xy_wkt)
-    lonlat_to_xy = Transformer.from_crs("EPSG:4326", xy_wkt)
+    lonlat_to_xy = Transformer.from_crs("EPSG:4326", xy_wkt, always_xy=True)
     xmin, ymin, xmax, ymax = lonlat_to_xy.transform_bounds(
         *xy_crs.area_of_use.bounds)
 
     # I want to test on random points, but if the points are too close to
     # the boundary, the transform can fail. So only try points within eps of
     # bounds, where eps is however small to avoid failing transforms
-    bounds_factor = 0.1
+    bounds_factor = 0.05
 
     # Choose a random vertex x,y
     if center is None:
-        vertex_x = random.uniform(xmin * bounds_factor, xmax * bounds_factor)
-        vertex_y = random.uniform(ymin * bounds_factor, ymax * bounds_factor)
+        vertex_x = random.uniform((xmin+xmax)/2.0 - (xmax-xmin) * bounds_factor, (xmin+xmax)/2.0 + (xmax-xmin) * bounds_factor)
+        vertex_y = random.uniform((ymin+ymax)/2.0 - (ymax-ymin) * bounds_factor, (ymin+ymax)/2.0 + (ymax-ymin) * bounds_factor)
     else:
         vertex_x = center[0]
         vertex_y = center[1]
@@ -134,6 +138,26 @@ def random_geotiff(path, profile, data=np.array([])):
         data = np.random.rand(height, width)
     with rio.open(path, "w", **profile) as out_geofile:
         out_geofile.write(data, 1)
+    return data
+
+def random_roads_shapefile(path, bounds):
+    """Output a random shapefile for use with unit tests. 100 random
+    points within given bounds are generated, then 10 lines are drawn 
+    in-between 5 random points, creating 10 roads, and a random road 
+    type is assigned to each."""
+    random_xs = np.random.uniform(bounds.left, bounds.right, 100)
+    random_ys = np.random.uniform(bounds.bottom, bounds.top, 100)
+    points_xy = []
+    for x, y in zip(random_xs, random_ys):
+        points_xy.append(Point(x,y))
+    n_lines = 10
+    lines_xy = []
+    road_types = []
+    for _ in range(n_lines):
+        lines_xy.append(LineString(random.choices(points_xy, k=5)))
+        road_types.append(random.choice(list(Score.road_labels.keys())))
+    data = gpd.GeoDataFrame({'RTTYP':road_types}, geometry = lines_xy).set_crs(5070)
+    data.to_file(path)
     return data
 
 
