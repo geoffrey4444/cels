@@ -19,12 +19,16 @@ def test_findsites():
   find_sites_path = "findsites"
   elevation_path = base_path + "/test_images/SouthNM_Elevation_1km.tif"
   landcover_path = base_path + "/test_images/SouthNM_Landcover_1km.tif"
+  roads_path = base_path + "/test_images/SouthNM_Roads_1km.shp"
 
   print("Running test in " + temp_path)
 
   # For testing purposes, do a search at the center of the landcover and
   # elevation images in test_images, which are 1km resolution.
-  # Lay down a grid of 10 x 10 vertex locations
+  # Lay down a grid of 10 x 10 vertex locations.
+  # The outscore is 200.0 in order to ensure Ls are returned with
+  # the added road crossing costs.
+
   lon = -107.7
   lat = 32.3
   width = 100000.0  # width of search region is 100km = 100 pixels
@@ -33,16 +37,17 @@ def test_findsites():
   arm_length = 40000.0  # meters
   dl_for_arms = 1000.0  # meters
   opening_angle = 90.0
-  rotation_angles = 36
-  outscore = 70.0
+  rotation_angles = 18 
+  outscore = 200.0 #The score threshold in million USD.
 
   args = [
       find_sites_path, f"--lon={lon}", f"--lat={lat}", f"--width={width}",
       f"--height={height}", f"--N={vertex_spacing}",
       f"--arm_length={arm_length}", f"--dl={dl_for_arms}",
-      f"--opening-angle={opening_angle}", f"--rotation-angles=18",
+      f"--opening-angle={opening_angle}", f"--rotation-angles={rotation_angles}",
       f"--elevation={elevation_path}", f"--landcover={landcover_path}",
-      f"--outscore={outscore}", f"--outdir={temp_path}", f"--njobs=2"
+      f"--roads={roads_path}", f"--outscore={outscore}",
+      f"--outdir={temp_path}", f"--njobs=2"
   ]
   print(f"Starting search in path: {temp_path}")
   print(" ".join(args))
@@ -100,7 +105,7 @@ def test_findsites():
       rows = 0
       for row in reader:
         rows += 1
-        assert len(row) == 8
+        assert len(row) == 9
       assert rows > 2 # if search succeeded, at least header + 1 row
       csvfile.close()
 
@@ -114,6 +119,8 @@ def test_findsites_with_shared_memory():
   find_sites_path = "findsites"
   elevation_path = base_path + "/test_images/SouthNM_Elevation_1km.tif"
   landcover_path = base_path + "/test_images/SouthNM_Landcover_1km.tif"
+  roads_path = base_path + "/test_images/SouthNM_Roads_1km.shp"
+
 
   print("Running shared memory test in " + temp_path)
 
@@ -137,7 +144,7 @@ def test_findsites_with_shared_memory():
   dl_for_arms = 1000.0  # meters
   opening_angle = 90.0
   rotation_angles = 36
-  outscore = 70.0
+  outscore = 200.0
 
   args = [
       find_sites_path, f"--lon={lon}", f"--lat={lat}", f"--width={width}",
@@ -146,7 +153,7 @@ def test_findsites_with_shared_memory():
       f"--opening-angle={opening_angle}", f"--rotation-angles=18",
       f"--elevation={elevation_bsq_path}", f"--landcover={landcover_bsq_path}",
       f"--outscore={outscore}", f"--outdir={temp_path}", f"--njobs=2",
-      "--use-shared-memory"
+      f"--roads={roads_path}", "--use-shared-memory"
   ]
   print(f"Starting shared memory search in path: {temp_path}")
   print(" ".join(args))
@@ -204,6 +211,6 @@ def test_findsites_with_shared_memory():
       rows = 0
       for row in reader:
         rows += 1
-        assert len(row) == 8
+        assert len(row) == 9
       assert rows > 2 # if search succeeded, at least header + 1 row
       csvfile.close()
