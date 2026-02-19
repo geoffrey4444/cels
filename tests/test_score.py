@@ -116,30 +116,30 @@ def test_landcover_score_by_type():
     # changed. This is just to ensure than any changes are intended and not
     # accidental.
     expected_landcover_score_by_type = {
-        0: 1e4,  # ocean
-        11: 1e4,  # open water
-        12: 1e4,  # perennial ice/snow
-        21: 100,  # developed, open space
-        22: 300,  # developed, low intensity
-        23: 1e4,  # developed, medium intensity
-        24: 1e4,  # developed, high intensity
-        31: 0,  # barren land (rock/sand/clay)
-        41: 20,  # deciduous forest
-        42: 20,  # evergreen forest
-        43: 20,  # mixed forest
-        51: 0,  # dwarf scrub
-        52: 5,  # shrub/scrub
-        71: 0,  # grassland/herbaceous
-        72: 0,  # sedge/herbaceous
-        73: 0,  # lichens
-        74: 0,  # moss
-        81: 20,  # pasture/hay
-        82: 100,  # cultivated crops
-        90: 1e4,  # woody wetlands
-        95: 1e4,  # emergent herbaceous wetlands
-        101: 1e4,  # Canada
-        102: 1e4,  # Mexico
-        103: 1e4  # Cuba
+        0: 7e6,  # ocean; Bridge costs ([5], example 4) $150/ft^2 * 43,560 ft^2/acre=$6,534,000.
+        11: 7e6,  # open water; Bridge costs ([5], example 4) $150/ft^2 * 43,560 ft^2/acre=$6,534,000.
+        12: 4e2,  # perennial ice/snow; Commercial snow/ice removal up tp $400 per acre per application [3].
+        21: 6e3,  # developed, open space; Sparse demolition (0.1*$1/ft^2=$4,356/acre [4]) plus clearing ($2,000/acre [2]).
+        22: 2e4,  # developed, low intensity; Low demolition (0.2*$2/ft^2=$17,424/acre [4]) plus clearing ($2,000/acre [2]).
+        23: 5e4,  # developed, medium intensity; Medium demolition (0.3*$3/ft^2=$43,560/acre [4]) plus clearing ($2,000/acre [2]).
+        24: 2e5,  # developed, high intensity; High demolition (1.0*$4/ft^2=$174,240/acre [4]) plus clearing ($2,000/acre [2]).
+        31: 1e3,  # barren land (rock/sand/clay); Clearing ($1,200/acre [1,2]). 
+        41: 6e3,  # deciduous forest; Forest clearing rough average. Clearing ($6,000/acre [1,2]).
+        42: 6e3,  # evergreen forest; Forest clearing rough average. Clearing ($6,000/acre [1,2]).
+        43: 6e3,  # mixed forest; Forest clearing rough average. Clearing ($6,000/acre [1,2]).
+        51: 2e3,  # dwarf scrub; Between barren land and forest [1,2].
+        52: 3e3,  # shrub/scrub; Between barren land and forest, but more vegetation [1,2].
+        71: 1e3,  # grassland/herbaceous; Clearing ($1,200/acre [1,2]).
+        72: 1e3,  # sedge/herbaceous; Clearing ($1,200/acre [1,2]).
+        73: 1e3,  # lichens; Clearing ($1,200/acre [1,2]).
+        74: 1e3,  # moss; Clearing ($1,200/acre [1,2]).
+        81: 1e3,  # pasture/hay; Clearing ($1,200/acre [1,2]).
+        82: 1e3,  # cultivated crops; Clearing ($1,200/acre [1,2]).
+        90: 8e3,  # woody wetlands; Higher than forest clearing costs, clearing regulations ($8,000/acre [2]).
+        95: 8e3,  # emergent herbaceous wetlands; Higher than forest clearing costs, clearing regulations ($8,000/acre [2]).
+        101: 1e8,  # Canada; Exclude, made up number, not considering these areas.
+        102: 1e8,  # Mexico; Exclude, made up number, not considering these areas.
+        103: 1e8  # Cuba; Exclude, made up number, not considering these areas.
     }
     for key in expected_landcover_score_by_type:
         assert Score.landcover_score_by_type[
@@ -201,17 +201,34 @@ def test_landcover_score():
         np.array(possible_landcover_scores), number_of_pixels)
     dl_for_arm_meters = np.random.random() * 150.0 + 50.0
     score = Score.landcover_score(landcover_pix_data, dl_for_arm_meters)
-    # Check that the score, factoring out dl_for_arms_meters and a
-    # constant 1e-5, is just the sum of the scores for each type
+    # Check that the score (factoring out dl_for_arms_meters, a
+    # constant 1e-6 that converts from dollars to millions of dollars, 
+    # arms_footprint_width_meters and dividing by meters_squared_per_acre)
+    # is the is just the sum of the scores for each type.
+    
+    # Width of the Cosmic Explorer site footprint (300ft, from CE-G2300054) in meters.
+    # Hardcoded here. 
+    arms_footprint_width_meters = 91.44
 
+    # Conversion of acres to meters squared, 1 acre = 4046.86 m^2. Hardcoded here. 
+    meters_squared_per_acre = 4046.86
+
+    # Score scale factor (to go from cost in $1M USD to landcover cost value)
+    landcover_score_scale = 1.e-6 * dl_for_arm_meters * arms_footprint_width_meters / meters_squared_per_acre
+    
     # via https://stackoverflow.com/questions/16992713
     # /translate-every-element-in-numpy-array-according-to-key
     # map each landcover code into a score. Here compute the sum
     # differently.
+    # score is output of Score.landcover_score with units of $1M USD. 
+    # expected_score starts out in units of $1 USD/acre and we rescale it by landcover_score_scale 
+    # which takes dollars/acre and multiplies by 1e-6 * m^2 / (m^2 / acre) to get millions of dollars. 
+    # So score and expected score have the same units (millions of dollars), which means eps is in units 
+    # of millions of dollars. an eps of 1e-6 million dollars = $1.
     expected_score = np.sum(
         np.vectorize(Score.landcover_score_by_type.get)(landcover_pix_data))
-    expected_score *= 1.e-5 * dl_for_arm_meters
-    eps = 1.e-7
+    expected_score *= landcover_score_scale
+    eps = 1.e-4 # check score == expected to within $100
     assert np.abs(score - expected_score) < eps
 
     # If the scores are all one type, then verify that such scores
@@ -219,7 +236,7 @@ def test_landcover_score():
     for landcover_score in Score.landcover_score_by_type.keys():
         uniform_pix = np.ones(number_of_pixels) * landcover_score
         uniform_score = Score.landcover_score(uniform_pix, dl_for_arm_meters)
-        assert np.abs(uniform_score * 1e5 / dl_for_arm_meters -
+        assert np.abs(uniform_score / landcover_score_scale -
                       number_of_pixels *
                       Score.landcover_score_by_type[landcover_score]) < eps
 

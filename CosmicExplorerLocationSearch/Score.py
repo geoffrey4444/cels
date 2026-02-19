@@ -69,40 +69,54 @@ def pixel_data_from_shared_memory(shm_name, transform, nodata_value, detector,
     }
 
 
-# These descriptions and codes follow the National Land Cover DatabaseLand Cover
-# Classification Legend, which is available at
+# The landcover "type" includes descriptions and codes follow the 
+# National Land Cover DatabaseLand Cover Classification Legend, available at
 # https://www.mrlc.gov/sites/default/files/NLCDclasses.pdf
 # The codes for Ocean Water (0) and Non-U.S. land (101, 102, 103) conform to
 # the USGS 100-Meter Resolution Land Cover of the Conterminous
 # United States, 2001 geotiff, available at
 # https://geodata.mit.edu/catalog/stanford-wv372bn9329.
-# The scores are not necessarily optimal choices. When these are changed,
-# test_landcover_score_by_type() in test_score.py must also change.
+# The "score" given here for each landcover type is a cost in units of US dollars per acre.
+# These costs represent rough (one significant digit) estimates for clearing land 
+# with that type of landcover to "brown field" conditions (or in the case of open water 
+# or ocean, building a bridge). 
+# Note that effects such costs varying by region and economies of scale 
+# (clearing 100 acres is less than 100 times as expensive as clearing one acre) are not 
+# currently taken into account. Note also that land acquisition costs will be costed 
+# separately in a future merge request. 
+# Some references for acre clearing/bridge costs include: 
+# [1] https://www.fixr.com/costs/land-clearing-and-building-site-preparation
+# [2] https://www.danieldean.com/how-much-does-it-cost-to-clear-land-in-2025/
+# [3] https://georgehardscaping.com/commercial-snow-removal-pricing-calculator/
+# [4] https://deltademolitioncontractor.com/blog/how-much-does-it-cost-to-remove-a-parking-lot/  
+# [5] https://www.wsdot.wa.gov/eesc/bridge/WBES/2017/Session8/8A3-Saindon.pdf
+# When these cost values are are changed, test_landcover_score_by_type() in test_score.py 
+# must also change.
 landcover_score_by_type = {
-    0: 1e4,  # ocean
-    11: 1e4,  # open water
-    12: 1e4,  # perennial ice/snow
-    21: 100,  # developed, open space
-    22: 300,  # developed, low intensity
-    23: 1e4,  # developed, medium intensity
-    24: 1e4,  # developed, high intensity
-    31: 0,  # barren land (rock/sand/clay)
-    41: 20,  # deciduous forest
-    42: 20,  # evergreen forest
-    43: 20,  # mixed forest
-    51: 0,  # dwarf scrub
-    52: 5,  # shrub/scrub
-    71: 0,  # grassland/herbaceous
-    72: 0,  # sedge/herbaceous
-    73: 0,  # lichens
-    74: 0,  # moss
-    81: 20,  # pasture/hay
-    82: 100,  # cultivated crops
-    90: 1e4,  # woody wetlands
-    95: 1e4,  # emergent herbaceous wetlands
-    101: 1e4,  # Canada
-    102: 1e4,  # Mexico
-    103: 1e4  # Cuba
+    0: 7e6,  # ocean; Bridge costs ([5], example 4) $150/ft^2 * 43,560 ft^2/acre=$6,534,000.
+    11: 7e6,  # open water; Bridge costs ([5], example 4) $150/ft^2 * 43,560 ft^2/acre=$6,534,000.
+    12: 4e2,  # perennial ice/snow; Commercial snow/ice removal up tp $400 per acre per application [3].
+    21: 6e3,  # developed, open space; Sparse demolition (0.1*$1/ft^2=$4,356/acre [4]) plus clearing ($2,000/acre [2]).
+    22: 2e4,  # developed, low intensity; Low demolition (0.2*$2/ft^2=$17,424/acre [4]) plus clearing ($2,000/acre [2]).
+    23: 5e4,  # developed, medium intensity; Medium demolition (0.3*$3/ft^2=$43,560/acre [4]) plus clearing ($2,000/acre [2]).
+    24: 2e5,  # developed, high intensity; High demolition (1.0*$4/ft^2=$174,240/acre [4]) plus clearing ($2,000/acre [2]).
+    31: 1e3,  # barren land (rock/sand/clay); Clearing ($1,200/acre [1,2]). 
+    41: 6e3,  # deciduous forest; Forest clearing rough average. Clearing ($6,000/acre [1,2]).
+    42: 6e3,  # evergreen forest; Forest clearing rough average. Clearing ($6,000/acre [1,2]).
+    43: 6e3,  # mixed forest; Forest clearing rough average. Clearing ($6,000/acre [1,2]).
+    51: 2e3,  # dwarf scrub; Between barren land and forest [1,2].
+    52: 3e3,  # shrub/scrub; Between barren land and forest, but more vegetation [1,2].
+    71: 1e3,  # grassland/herbaceous; Clearing ($1,200/acre [1,2]).
+    72: 1e3,  # sedge/herbaceous; Clearing ($1,200/acre [1,2]).
+    73: 1e3,  # lichens; Clearing ($1,200/acre [1,2]).
+    74: 1e3,  # moss; Clearing ($1,200/acre [1,2]).
+    81: 1e3,  # pasture/hay; Clearing ($1,200/acre [1,2]).
+    82: 1e3,  # cultivated crops; Clearing ($1,200/acre [1,2]).
+    90: 8e3,  # woody wetlands; Higher than forest clearing costs, clearing regulations ($8,000/acre [2]).
+    95: 8e3,  # emergent herbaceous wetlands; Higher than forest clearing costs, clearing regulations ($8,000/acre [2]).
+    101: 1e8,  # Canada; Exclude, made up number, not considering these areas.
+    102: 1e8,  # Mexico; Exclude, made up number, not considering these areas.
+    103: 1e8  # Cuba; Exclude, made up number, not considering these areas.
 }
 
 # These descriptions and codes follow the National Land Cover DatabaseLand Cover
@@ -145,13 +159,20 @@ landcover_labels = {
 # must also be updated
 earth_radius_meters = 6378100
 
+# Width of the Cosmic Explorer site footprint (300ft, from CE-G2300054) in meters.
+# Hardcoded here. 
+arms_footprint_width_meters = 91.44
+
+# Conversion of acres to meters squared, 1 acre = 4046.86 m^2. Hardcoded here. 
+meters_squared_per_acre = 4046.86
 
 def landcover_score(landcover_pixel_data, dl_for_arms_meters):
     """Input: landcover_pixel_data: 1D array of landcover pixel data, e.g. 
     output from pixel_data_from_rasters()
 
-    Output: Total landcover score obtained by summing result of passing the 
-    value at each pixel into the Score.landcover_score_by_type dict.
+    Output: Total landcover cost obtained by summing result of passing the 
+    value at each pixel into the Score.landcover_score_by_type dict and 
+    multiplying by number of acres and multiplying by 1e-6 to get cost in $1M USD.
 
     Note:
     Landcover pixel data should conform to the National
@@ -181,15 +202,14 @@ def landcover_score(landcover_pixel_data, dl_for_arms_meters):
       95          Emergent Herbaceous Wetlands
       101 - 103   Non-U.S. Land
     """
-    # Just sum over the landcover scores set above for all pixels,
-    # and multiply the result by some normalization, so this is comparable
-    # to other scores (here the normalization is 1e-5)
+    # Sum over the landcover cost (acre clearing cost in dollars, 
+    # times number of acres) for each pixel in the arm
+    # and multiply the result by 1e-6 to get an answer in MUS$. 
     return np.sum(
         np.array([
-            landcover_score_by_type[v] * dl_for_arms_meters
+            landcover_score_by_type[v] * dl_for_arms_meters * arms_footprint_width_meters / meters_squared_per_acre
             for v in landcover_pixel_data
-        ])) * 1e-5
-
+        ])) * 1e-6
 
 def ideal_beamtube_depth_meters(detector):
     """Input: detector (output from Detector.detector()).
