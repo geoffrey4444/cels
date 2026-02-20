@@ -17,12 +17,14 @@ def random_scores():
     elevation_score = random.uniform(0.0, 1000.0)
     tilt_score = random.uniform(0.0, 1000.0)
     landcover_score = random.uniform(0.0, 1000.0)
+    land_acquisition_score = random.uniform(0.0, 1000.0)
     roads_score = random.uniform(0.0, 1000.0)
-    total_score = elevation_score + tilt_score + landcover_score + roads_score
+    total_score = elevation_score + tilt_score + landcover_score + land_acquisition_score + roads_score
     scores = {
         "elevation_score": elevation_score,
         "tilt_score": tilt_score,
         "landcover_score": landcover_score,
+        "land_acquisition_score": land_acquisition_score,
         "roads_score": roads_score,
         "total_score": total_score,
     }
@@ -187,4 +189,13 @@ def random_landcover_geotiff_with_width(path, width, omit_bad_values=True):
         data = np.random.choice(landcover_choices_no_nodata, (width, width))
     else:
         data = np.random.choice(landcover_bad_values_only, (width, width))
+    return random_geotiff(path, profile, data=data)
+
+
+def random_land_acquisition_geotiff_with_width(path, width):
+    """Output a random geotiff for use with unit tests, returning the 
+    randomly generated data as a numpy array, given a path. Uses
+    profile_for_random_geotiff()."""
+    profile, _ = profile_for_random_geotiff(width)
+    data = np.random.uniform(0.0, 10000000.0, (width, width))
     return random_geotiff(path, profile, data=data)

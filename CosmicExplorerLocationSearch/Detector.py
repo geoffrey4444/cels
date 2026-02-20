@@ -229,6 +229,7 @@ def write_shapefile_of_detectors(detectors, output_file_path):
             "elev_score": "float",
             "tilt_score": "float",
             "lc_score": "float",
+            "lacq_score": "float",
             "road_score": "float",
             "tot_score": "float",
         }
@@ -255,6 +256,7 @@ def write_shapefile_of_detectors(detectors, output_file_path):
                 "elev_score": -9999.0,
                 "tilt_score": -9999.0,
                 "lc_score": -9999.0,
+                "lacq_score": -9999.0,
                 "road_score": -9999.0,
                 "tot_score": -9999.0,
             }
@@ -265,6 +267,8 @@ def write_shapefile_of_detectors(detectors, output_file_path):
                     "tilt_score"]
                 detector_properties["lc_score"] = detector["scores"][
                     "landcover_score"]
+                detector_properties["lacq_score"] = detector["scores"][
+                    "land_acquisition_score"]
                 detector_properties["road_score"] = detector["scores"]["roads_score"]
                 detector_properties["tot_score"] = detector["scores"][
                     "total_score"]

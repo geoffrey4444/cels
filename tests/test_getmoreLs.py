@@ -42,7 +42,7 @@ def test_getmoreLs():
       random_detectors.append(random_detector(scores=detector_score,center=c))
   with open(scores_path, "w") as out_ascii:
       legend = "#opening_angle rotation_angle vertex_x vertex_y elevation_score"
-      legend += " tilt_score landcover_score roads_score total_score\n"
+      legend += " tilt_score landcover_score land_acquisition_score roads_score total_score\n"
       out_ascii.write(legend)
       for result in random_detectors:
           row_text = ""
@@ -59,11 +59,13 @@ def test_getmoreLs():
           row_text += str(
               result[-1]["scores"]["landcover_score"]) + " "
           row_text += str(
+              result[-1]["scores"]["land_acquisition_score"]) + " "
+          row_text += str(
               result[-1]["scores"]["roads_score"]) + " "
           row_text += str(
               result[-1]["scores"]["total_score"]) + "\n"
           out_ascii.write(row_text)
-  os.system(f"sort -t ' ' -k9n {scores_path} > {ordered_scores_path}")
+  os.system(f"sort -t ' ' -k10n {scores_path} > {ordered_scores_path}")
 
   expected_scores_files = [
      "scores.csv",
@@ -75,16 +77,17 @@ def test_getmoreLs():
   for name in expected_scores_files:
     assert name in scores_output_names
 
-  score_threshold = 1000.0
+  score_threshold = 3800.0
   minimum_score = 0.0
   maximum_score = 10000.0
 
   if np.all(np.array(random_detectors_scores)>score_threshold):
       print("Warning: no Ls below score threshold")
 
-  #random_scores() returns a score between 0 and 3000 so a threshold of 1000
+  #random_scores() returns a score between 0 and 5000 so a threshold of 3800
   #will normally return some but not all Ls. Minimum and maximum scores are 
   #edge test cases that should return none (0.0) or all (10000.0) generated Ls.
+  
   area_name = "TestArea"
 
   args = [

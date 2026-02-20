@@ -52,6 +52,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                        * "paths" = dict containing the following:
                          * "elevation" = path to elevation raster
                          * "landcover" = path to landcover raster
+                         * "land_acquisition" = path to land acquisition raster
       shapefiles_paths: dict. containing shapefiles paths
                         *"roads" = path to roads shapefile               
     
@@ -154,6 +155,9 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
         "landcover_score":
         np.zeros((number_of_opening_angles, number_of_rotation_angles,
                   grid_rows, grid_cols)),
+        "land_acquisition_score":
+        np.zeros((number_of_opening_angles, number_of_rotation_angles,
+                  grid_rows, grid_cols)),
         "roads_score":
         np.zeros((number_of_opening_angles, number_of_rotation_angles,
                   grid_rows, grid_cols)),
@@ -226,6 +230,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                     score_col] = score["tilt_score"]
                 result["landcover_score"][score_i][score_j][score_row][
                     score_col] = score["landcover_score"]
+                result["land_acquisition_score"][score_i][score_j][score_row][
+                    score_col] = score["land_acquisition_score"]
                 result["roads_score"][score_i][score_j][score_row][
                     score_col] = score["roads_score"]
                 result["total_score"][score_i][score_j][score_row][
@@ -274,6 +280,10 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
         np.log10(eps +
                  np.min(np.min(result["landcover_score"], axis=0), axis=0)),
         axis=0)
+    best_land_acquisition = np.flip(
+        np.log10(eps +
+                 np.min(np.min(result["land_acquisition_score"], axis=0), axis=0)),
+        axis=0)
     best_total = np.flip(np.log10(
         np.min(np.min(result["total_score"], axis=0), axis=0)),
                          axis=0)
@@ -291,6 +301,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     best_tilt[np.abs(best_tilt - log10_no_data_times_big_factor) < eps_for_log] = no_data
     best_landcover[np.abs(best_landcover -
                           log10_no_data_times_big_factor) < eps_for_log] = no_data
+    best_land_acquisition[np.abs(best_land_acquisition -
+                          log10_no_data_times_big_factor) < eps_for_log] = no_data
     best_total[np.abs(best_total - log10_no_data_times_big_factor) < eps_for_log] = no_data
 
     with rio.open(path_for_output + "/elevation_score.tif", "w",
@@ -302,6 +314,9 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     with rio.open(path_for_output + "/landcover_score.tif", "w",
                   **out_profile) as out_geofile:
         out_geofile.write(best_landcover, 1)
+    with rio.open(path_for_output + "/land_acquisition_score.tif", "w",
+                  **out_profile) as out_geofile:
+        out_geofile.write(best_land_acquisition, 1)
     with rio.open(path_for_output + "/total_score.tif", "w",
                   **out_profile) as out_geofile:
         out_geofile.write(best_total, 1)
@@ -310,7 +325,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     print(str(datetime.now()) + " -- Outputting csv")
     detectors = []
     legend = "#opening_angle rotation_angle vertex_x vertex_y elevation_score"
-    legend += " tilt_score landcover_score roads_score total_score\n"
+    legend += " tilt_score landcover_score land_acquisition_score roads_score total_score\n"
     with open(path_for_output + "/scores.csv", "w") as out_ascii:
         out_ascii.write(legend)
         for i, opening_angle in enumerate(opening_angles):
@@ -333,6 +348,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                         row_text += str(
                             result["landcover_score"][i][j][row][col]) + " "
                         row_text += str(
+                            result["land_acquisition_score"][i][j][row][col]) + " "
+                        row_text += str(
                             result["roads_score"][i][j][row][col]) + " "
                         row_text += str(
                             result["total_score"][i][j][row][col]) + "\n"
@@ -344,6 +361,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                             result["tilt_score"][i][j][row][col],
                             "landcover_score":
                             result["landcover_score"][i][j][row][col],
+                            "land_acquisition_score":
+                            result["land_acquisition_score"][i][j][row][col],
                             "roads_score":
                             result["roads_score"][i][j][row][col],
                             "total_score":
@@ -445,6 +464,7 @@ def main():
                    help="Number of rotation angles")
     p.add_argument('--elevation', help="Path to elevation geotiff")
     p.add_argument('--landcover', help="Path to landcover geotiff")
+    p.add_argument('--land_acquisition', help="Path to land acquisition cost geotiff")
     p.add_argument('--roads', help="Path to roads shapefile")
     p.add_argument('--outscore',
                    type=float,
@@ -481,6 +501,8 @@ def main():
             raise ValueError("When using --use-shared-memory, elevation file must have .bsq extension")
         if not args.landcover.endswith('.bsq'):
             raise ValueError("When using --use-shared-memory, landcover file must have .bsq extension")
+        if not args.land_acquisition.endswith('.bsq'):
+            raise ValueError("When using --use-shared-memory, land acquisition file must have .bsq extension")
 
     # Use the elevation file to determine default raster information.
     with rio.open(args.elevation) as geofile:
@@ -492,6 +514,7 @@ def main():
         raster_info["paths"] = {
             "elevation": args.elevation,
             "landcover": args.landcover,
+            "land_acquisition": args.land_acquisition,
         }
     shapefiles_paths["roads"] = args.roads
     print(f"Raster info: {raster_info}")
