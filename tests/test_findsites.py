@@ -19,6 +19,7 @@ def test_findsites():
   find_sites_path = "findsites"
   elevation_path = base_path + "/test_images/SouthNM_Elevation_1km.tif"
   landcover_path = base_path + "/test_images/SouthNM_Landcover_1km.tif"
+  land_acquisition_path = base_path + "/test_images/SouthNM_LandAcquisition_1km.tif"
   roads_path = base_path + "/test_images/SouthNM_Roads_1km.shp"
 
   print("Running test in " + temp_path)
@@ -46,6 +47,7 @@ def test_findsites():
       f"--arm_length={arm_length}", f"--dl={dl_for_arms}",
       f"--opening-angle={opening_angle}", f"--rotation-angles={rotation_angles}",
       f"--elevation={elevation_path}", f"--landcover={landcover_path}",
+      f"--land_acquisition={land_acquisition_path}",
       f"--roads={roads_path}", f"--outscore={outscore}",
       f"--outdir={temp_path}", f"--njobs=2"
   ]
@@ -105,7 +107,7 @@ def test_findsites():
       rows = 0
       for row in reader:
         rows += 1
-        assert len(row) == 9
+        assert len(row) == 10
       assert rows > 2 # if search succeeded, at least header + 1 row
       csvfile.close()
 
@@ -119,6 +121,7 @@ def test_findsites_with_shared_memory():
   find_sites_path = "findsites"
   elevation_path = base_path + "/test_images/SouthNM_Elevation_1km.tif"
   landcover_path = base_path + "/test_images/SouthNM_Landcover_1km.tif"
+  land_acquisition_path = base_path + "/test_images/SouthNM_LandAcquisition_1km.tif"
   roads_path = base_path + "/test_images/SouthNM_Roads_1km.shp"
 
 
@@ -127,10 +130,12 @@ def test_findsites_with_shared_memory():
   # Convert geotiffs to BSQ files for shared memory test
   elevation_bsq_path = temp_path + "/elevation.bsq"
   landcover_bsq_path = temp_path + "/landcover.bsq"
+  land_acquisition_bsq_path = temp_path + "/land_acquisition.bsq"
   
   import CosmicExplorerLocationSearch.Geotiff as Geotiff
   Geotiff.geotiff_to_bsq(elevation_path, elevation_bsq_path)
   Geotiff.geotiff_to_bsq(landcover_path, landcover_bsq_path)
+  Geotiff.geotiff_to_bsq(land_acquisition_path, land_acquisition_bsq_path)
 
   # For testing purposes, do a search at the center of the landcover and
   # elevation images in test_images, which are 1km resolution.
@@ -152,6 +157,7 @@ def test_findsites_with_shared_memory():
       f"--arm_length={arm_length}", f"--dl={dl_for_arms}",
       f"--opening-angle={opening_angle}", f"--rotation-angles=18",
       f"--elevation={elevation_bsq_path}", f"--landcover={landcover_bsq_path}",
+      f"--land_acquisition={land_acquisition_bsq_path}",
       f"--outscore={outscore}", f"--outdir={temp_path}", f"--njobs=2",
       f"--roads={roads_path}", "--use-shared-memory"
   ]
@@ -211,6 +217,6 @@ def test_findsites_with_shared_memory():
       rows = 0
       for row in reader:
         rows += 1
-        assert len(row) == 9
+        assert len(row) == 10
       assert rows > 2 # if search succeeded, at least header + 1 row
       csvfile.close()

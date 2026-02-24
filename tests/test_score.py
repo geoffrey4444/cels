@@ -18,7 +18,8 @@ def test_pixel_data_from_rasters():
     # Make temporary geotiffs
     rasters = {
         "elevation": temp_path + "/elevation.tif",
-        "landcover": temp_path + "/landcover.tif"
+        "landcover": temp_path + "/landcover.tif",
+        "land_acquisition": temp_path + "/land_acquisition.tif"
     }
     shapefiles = {"roads": temp_path + "/roads.shp"}
     profile = None
@@ -29,7 +30,8 @@ def test_pixel_data_from_rasters():
     profile, bounds = profile_for_random_geotiff(width)
     random_raster_data = {
         "elevation": random_geotiff(rasters["elevation"], profile),
-        "landcover": random_geotiff(rasters["landcover"], profile)
+        "landcover": random_geotiff(rasters["landcover"], profile),
+        "land_acquisition": random_geotiff(rasters["land_acquisition"], profile)
     }
     # Random shapefile for a 40km x 40km area in New Mexico
     random_shapefile_data = {
@@ -239,6 +241,43 @@ def test_landcover_score():
         assert np.abs(uniform_score / landcover_score_scale -
                       number_of_pixels *
                       Score.landcover_score_by_type[landcover_score]) < eps
+
+
+
+def test_land_acquisition_score():
+    arm_pixel_length = np.random.randint(200, 400)
+    number_of_pixels = 2 * arm_pixel_length + 1
+    dl_for_arm_meters = np.random.random() * 150.0 + 50.0
+    land_acquisition_pix_data = np.random.uniform(0, 1e6, number_of_pixels)
+    land_acquisition_score = Score.land_acquisition_score(land_acquisition_pix_data, dl_for_arm_meters)
+    # Check that the score (factoring out dl_for_arms_meters, a
+    # constant 1e-6 that converts from dollars to millions of dollars, 
+    # arms_footprint_width_meters and dividing by meters_squared_per_acre)
+    # is the is just the sum of the scores for each type.
+    
+    # Width of the Cosmic Explorer site footprint (300ft, from CE-G2300054) in meters.
+    # Hardcoded here. 
+    arms_footprint_width_meters = 91.44
+
+    # Conversion of acres to meters squared, 1 acre = 4046.86 m^2. Hardcoded here. 
+    meters_squared_per_acre = 4046.86
+
+    # Score scale factor (to go from cost in $1M USD to landcover cost value)
+    land_acquisition_score_scale = 1.e-6 * dl_for_arm_meters * arms_footprint_width_meters / meters_squared_per_acre
+    
+    # via https://stackoverflow.com/questions/16992713
+    # /translate-every-element-in-numpy-array-according-to-key
+    # map each landcover code into a score. Here compute the sum
+    # differently.
+    # score is output of Score.land_acquisition_score with units of $1M USD. 
+    # expected_score starts out in units of $1 USD/acre and we rescale it by land_acquisition_score_scale 
+    # which takes dollars/acre and multiplies by 1e-6 * m^2 / (m^2 / acre) to get millions of dollars. 
+    # So score and expected score have the same units (millions of dollars), which means eps is in units 
+    # of millions of dollars. an eps of 1e-6 million dollars = $1.
+    expected_score = np.sum(land_acquisition_pix_data)
+    expected_score *= land_acquisition_score_scale
+    eps = 1.e-4 # check score == expected to within $100
+    assert np.abs(land_acquisition_score - expected_score) < eps
 
 
 def test_ideal_beamtube_depth_meters():
@@ -466,7 +505,8 @@ def test_suitability_scores():
     # generate random geotiffs for elevation, landcover
     rasters = {
         "elevation": temp_path + "/elevation.tif",
-        "landcover": temp_path + "/landcover.tif"
+        "landcover": temp_path + "/landcover.tif",
+        "land_acquisition": temp_path + "/land_acquisition.tif"
     }
     shapefiles = {
         "roads": temp_path + "/roads.shp"
@@ -479,7 +519,9 @@ def test_suitability_scores():
         "elevation":
         random_elevation_geotiff_with_width(rasters["elevation"], width),
         "landcover":
-        random_landcover_geotiff_with_width(rasters["landcover"], width)
+        random_landcover_geotiff_with_width(rasters["landcover"], width),
+        "land_acquisition":
+        random_land_acquisition_geotiff_with_width(rasters["land_acquisition"], width)
     }
     random_shapefile_data = {
         "roads": random_roads_shapefile(shapefiles["roads"], bounds)
@@ -504,7 +546,8 @@ def test_suitability_scores():
 
     eps_pix_data = 1.e-12
     assert scores['total_score'] == scores["elevation_score"] + scores[
-        "tilt_score"] + scores["landcover_score"] + scores["roads_score"]
+        "tilt_score"] + scores["landcover_score"] + scores[
+        "land_acquisition_score"] + scores["roads_score"]
     for key in scores["pixel_data"]:
         assert np.max(
             np.abs(scores["pixel_data"][key]["values"] -
@@ -525,6 +568,8 @@ def test_suitability_scores():
         detector, pix_data["elevation"]["values"])["tilt"]
     assert scores_no_pix["landcover_score"] == Score.landcover_score(
         pix_data["landcover"]["values"], detector["dl_for_arms_meters"])
+    assert scores_no_pix["land_acquisition_score"] == Score.land_acquisition_score(
+        pix_data["land_acquisition"]["values"], detector["dl_for_arms_meters"])
 
     # Check that no_data_value is returned if a landcover pixel data
     # has a value to be omitted
@@ -532,7 +577,8 @@ def test_suitability_scores():
     # landcover pixels are drawn from values to be omitted.
     rasters_check_omitted_values = {
         "elevation": temp_path + "/elevation.tif",
-        "landcover": temp_path + "/landcover_only_values_to_omit.tif"
+        "landcover": temp_path + "/landcover_only_values_to_omit.tif",
+        "land_acquisition": temp_path + "/land_acquisition.tif"
     }
 
     width = 40  # pixels
@@ -623,16 +669,20 @@ def test_pixel_data_from_shared_memory():
     # Convert test images to BSQ files
     elevation_bsq = os.path.join(temp_path, "elevation.bsq")
     landcover_bsq = os.path.join(temp_path, "landcover.bsq")
+    land_acquisition_bsq = os.path.join(temp_path, "land_acquisition.bsq")
 
     elevation_tif = "tests/test_images/SouthNM_Elevation_1km.tif"
     landcover_tif = "tests/test_images/SouthNM_Landcover_1km.tif"
+    land_acquisition_tif = "tests/test_images/SouthNM_LandAcquisition_1km.tif"
 
     # Convert geotiffs to BSQ format
     Geotiff.geotiff_to_bsq(elevation_tif, elevation_bsq)
     Geotiff.geotiff_to_bsq(landcover_tif, landcover_bsq)
+    Geotiff.geotiff_to_bsq(land_acquisition_tif, land_acquisition_bsq)
 
     # Get expected results using pixel_data_from_rasters
-    raster_file_dict = {"elevation": elevation_tif, "landcover": landcover_tif}
+    raster_file_dict = {"elevation": elevation_tif, "landcover": landcover_tif,
+                        "land_acquisition": land_acquisition_tif}
 
     # Get raster bounds for landcover
     with rio.open(landcover_tif) as src:
@@ -654,6 +704,7 @@ def test_pixel_data_from_shared_memory():
     # Read BSQ files into shared memory
     elevation_shm_info = Geotiff.read_bsq_to_shared_memory(elevation_bsq)
     landcover_shm_info = Geotiff.read_bsq_to_shared_memory(landcover_bsq)
+    land_acquisition_shm_info = Geotiff.read_bsq_to_shared_memory(land_acquisition_bsq)
 
     # Test with 4 processes accessing shared memory
     with ProcessPoolExecutor(max_workers=4) as executor:
@@ -678,10 +729,22 @@ def test_pixel_data_from_shared_memory():
                                      detector, landcover_shm_info['shape'],
                                      landcover_shm_info['dtype'])
             landcover_futures.append(future)
+        
+        # Submit tasks for land acquisition data
+        land_acquisition_futures = []
+        for i in range(4):
+            future = executor.submit(worker_process_shared_memory,
+                                     land_acquisition_shm_info['shared_data_name'],
+                                     land_acquisition_shm_info['affine_transform'],
+                                     land_acquisition_shm_info['nodata_value'],
+                                     detector, land_acquisition_shm_info['shape'],
+                                     land_acquisition_shm_info['dtype'])
+            land_acquisition_futures.append(future)
 
         # Collect results
         elevation_results = [future.result() for future in elevation_futures]
         landcover_results = [future.result() for future in landcover_futures]
+        land_acquisition_results = [future.result() for future in land_acquisition_futures]
 
     # Verify that all processes returned the same results as expected
     eps = 1e-12
@@ -742,6 +805,34 @@ def test_pixel_data_from_shared_memory():
                            expected_results["landcover"]["coords"],
                            rtol=eps)
 
+    for i, result in enumerate(land_acquisition_results):
+        if "error" in result:
+            raise AssertionError(f"Process {i} failed: {result['error']}")
+
+        # Get the pixel indices that the shared memory method actually used
+        xs = detector['arms_xy'][:, 0]
+        ys = detector['arms_xy'][:, 1]
+        rows, cols = rio.transform.rowcol(
+            land_acquisition_shm_info['affine_transform'], xs, ys)
+
+        # Read the land acquisition raster and get the values at those exact pixel indices
+        with rio.open(land_acquisition_tif) as src:
+            array = src.read(1)
+            expected_values = []
+            for row, col in zip(rows, cols):
+                if 0 <= row < array.shape[0] and 0 <= col < array.shape[1]:
+                    expected_values.append(array[row, col])
+                else:
+                    expected_values.append(src.nodata)
+
+        # Compare the shared memory values with the expected values at the same pixel indices
+        assert np.array_equal(
+            result["values"], expected_values
+        ), f"Land acquisition values don't match expected values at the same pixel indices"
+        assert np.allclose(result["coords"],
+                           expected_results["land_acquisition"]["coords"],
+                           rtol=eps)
+
     # Clean up shared memory
     try:
         import multiprocessing.shared_memory as shared_memory
@@ -754,6 +845,11 @@ def test_pixel_data_from_shared_memory():
             name=landcover_shm_info['shared_data_name'])
         shm_landcover.close()
         shm_landcover.unlink()
+
+        shm_land_acquisition = shared_memory.SharedMemory(
+            name=land_acquisition_shm_info['shared_data_name'])
+        shm_land_acquisition.close()
+        shm_land_acquisition.unlink()
     except Exception as e:
         print(f"Warning: Could not clean up shared memory: {e}")
 

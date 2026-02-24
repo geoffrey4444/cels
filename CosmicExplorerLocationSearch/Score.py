@@ -204,12 +204,28 @@ def landcover_score(landcover_pixel_data, dl_for_arms_meters):
     """
     # Sum over the landcover cost (acre clearing cost in dollars, 
     # times number of acres) for each pixel in the arm
-    # and multiply the result by 1e-6 to get an answer in MUS$. 
+    # and multiply the result by 1e-6 to get an answer in $1M USD. 
     return np.sum(
         np.array([
             landcover_score_by_type[v] * dl_for_arms_meters * arms_footprint_width_meters / meters_squared_per_acre
             for v in landcover_pixel_data
         ])) * 1e-6
+
+
+def land_acquisition_score(land_acquisition_pixel_data, dl_for_arms_meters):
+    """Input: land_acquisition_pixel_data: 1D array of land acquisition pixel data, e.g. 
+    output from pixel_data_from_rasters()
+
+    Output: Total land acquisition cost
+    """
+    # Sum over the land acquisition cost (cost in dollars per acre, 
+    # times number of acres) for each pixel in the arm
+    # and multiply the result by 1e-6 to get an answer in $1M USD. 
+    return np.sum(
+        np.array([
+            land_acquisition_pixel_data * dl_for_arms_meters * arms_footprint_width_meters / meters_squared_per_acre
+            ])) * 1e-6
+
 
 def ideal_beamtube_depth_meters(detector):
     """Input: detector (output from Detector.detector()).
@@ -467,12 +483,12 @@ road_labels = {
 # roads are assigned a cost of 10. 
 
 road_score_by_type = {
-    "C": 10,
-    "I": 100,
-    "M":50,
-    "O":10,
-    "S":50,
-    "U":75,
+    "C": 10.0,
+    "I": 100.0,
+    "M":50.0,
+    "O":10.0,
+    "S":50.0,
+    "U":75.0,
 }
 
 
@@ -528,7 +544,7 @@ def suitability_scores(
         if shared_memory_info is None:
             raise ValueError("shared_memory_info must be provided when use_shared_memory=True")
         pix_data = {}
-        for raster_type in ["elevation", "landcover"]:
+        for raster_type in ["elevation", "landcover", "land_acquisition"]:
             shm_info = shared_memory_info[raster_type]
             pix_data[raster_type] = pixel_data_from_shared_memory(
                 shm_info["shared_data_name"],
@@ -548,13 +564,15 @@ def suitability_scores(
         (102 in pix_data["landcover"]["values"]) or
         (103 in pix_data["landcover"]["values"]) or
         (no_data_value in pix_data["landcover"]["values"]) or
-        (no_data_value in pix_data["elevation"]["values"])):
+        (no_data_value in pix_data["elevation"]["values"]) or
+        (no_data_value in pix_data["land_acquisition"]["values"])):
         factor_to_make_no_value_large = 1000000000
         return {
             # Take abs of no_data_value in case that value is negative
             "elevation_score": factor_to_make_no_value_large * np.abs(no_data_value),
             "tilt_score": factor_to_make_no_value_large * np.abs(no_data_value),
             "landcover_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "land_acquisition_score": factor_to_make_no_value_large * np.abs(no_data_value),
             "roads_score": factor_to_make_no_value_large * np.abs(no_data_value),
             "total_score": factor_to_make_no_value_large * np.abs(no_data_value)
         }
@@ -569,12 +587,15 @@ def suitability_scores(
     roads_crossings_df = roads["crossings"]
     landcover = landcover_score(pix_data["landcover"]["values"],
                                 detector["dl_for_arms_meters"])
-    total_score = elevation_score + tilt_score + landcover + roads_score
+    land_acquisition = land_acquisition_score(pix_data["land_acquisition"]["values"], 
+                                              detector["dl_for_arms_meters"])
+    total_score = elevation_score + tilt_score + landcover + land_acquisition + roads_score
     if include_pixel_data:
         return {
             "elevation_score": elevation_score,
             "tilt_score": tilt_score,
             "landcover_score": landcover,
+            "land_acquisition_score": land_acquisition,
             "roads_score": roads_score,
             "total_score": total_score,
             "pixel_data": pix_data,
@@ -585,6 +606,7 @@ def suitability_scores(
             "elevation_score": elevation_score,
             "tilt_score": tilt_score,
             "landcover_score": landcover,
+            "land_acquisition_score": land_acquisition,
             "roads_score": roads_score,
             "total_score": total_score
         }
@@ -612,7 +634,9 @@ def score_detector_from_grid(
     this function is meant to be called asynchronously.
     Input:
       raster_paths: dict containing paths to rasters keyed by "elevation",
-                    "landcover" and "roads"
+                    "landcover" and "land_acquisition"
+      shapefiles_paths: dict containing paths to vector files keyed by
+                    "roads"
       no_data_value: integer used to represent no data in output rasters
       arm_length_meters: detector arm length (meters)
       dl_for_arms_meters: distance between sample points (meters)
@@ -659,6 +683,7 @@ def score_detector_from_grid(
             "elevation_score": factor_to_make_no_value_large * np.abs(no_data_value),
             "tilt_score": factor_to_make_no_value_large * np.abs(no_data_value),
             "landcover_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "land_acquisition_score": factor_to_make_no_value_large * np.abs(no_data_value),
             "roads_score": factor_to_make_no_value_large * np.abs(no_data_value),
             "total_score": factor_to_make_no_value_large * np.abs(no_data_value)
         }
@@ -681,6 +706,7 @@ def score_detector_from_grid(
         "elevation_score": scores["elevation_score"],
         "tilt_score": scores["tilt_score"],
         "landcover_score": scores["landcover_score"],
+        "land_acquisition_score": scores["land_acquisition_score"],
         "roads_score": scores["roads_score"],
         "total_score": scores["total_score"]
     }
