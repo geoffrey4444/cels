@@ -231,6 +231,7 @@ def write_shapefile_of_detectors(detectors, output_file_path):
             "lc_score": "float",
             "lacq_score": "float",
             "road_score": "float",
+            "totmlacq_s": "float", 
             "tot_score": "float",
         }
     }
@@ -258,6 +259,7 @@ def write_shapefile_of_detectors(detectors, output_file_path):
                 "lc_score": -9999.0,
                 "lacq_score": -9999.0,
                 "road_score": -9999.0,
+                "totmlacq_s": -9999.0,
                 "tot_score": -9999.0,
             }
             if detector["scores"] != None:
@@ -269,7 +271,10 @@ def write_shapefile_of_detectors(detectors, output_file_path):
                     "landcover_score"]
                 detector_properties["lacq_score"] = detector["scores"][
                     "land_acquisition_score"]
-                detector_properties["road_score"] = detector["scores"]["roads_score"]
+                detector_properties["road_score"] = detector["scores"][
+                    "roads_score"]
+                detector_properties["totmlacq_s"] = detector["scores"][
+                    "total_score_m_lacq"]
                 detector_properties["tot_score"] = detector["scores"][
                     "total_score"]
             xarm_line, yarm_line = detector_to_line_string(detector)    

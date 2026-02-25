@@ -19,6 +19,7 @@ def random_scores():
     landcover_score = random.uniform(0.0, 1000.0)
     land_acquisition_score = random.uniform(0.0, 1000.0)
     roads_score = random.uniform(0.0, 1000.0)
+    total_score_m_lacq = elevation_score + tilt_score + landcover_score + roads_score
     total_score = elevation_score + tilt_score + landcover_score + land_acquisition_score + roads_score
     scores = {
         "elevation_score": elevation_score,
@@ -26,6 +27,7 @@ def random_scores():
         "landcover_score": landcover_score,
         "land_acquisition_score": land_acquisition_score,
         "roads_score": roads_score,
+        "total_score_m_lacq": total_score_m_lacq,
         "total_score": total_score,
     }
     return scores

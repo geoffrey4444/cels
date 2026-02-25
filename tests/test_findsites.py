@@ -60,7 +60,7 @@ def test_findsites():
       'elevation_score.tif', 'best_detectors.prj', 'total_score.tif',
       'best_detectors.dbf', 'scores.csv', 'landcover_score.tif',
       'best_detectors.shp', 'best_detectors.cpg', 'tilt_score.tif',
-      'best_detectors.shx'
+      'best_detectors.shx', 'total_score_minus_land_acq.tif'
   ]
   output_file_names = os.listdir(temp_path)
   for name in expected_files:
@@ -107,7 +107,7 @@ def test_findsites():
       rows = 0
       for row in reader:
         rows += 1
-        assert len(row) == 10
+        assert len(row) == 11
       assert rows > 2 # if search succeeded, at least header + 1 row
       csvfile.close()
 
@@ -122,6 +122,7 @@ def test_findsites_with_shared_memory():
   elevation_path = base_path + "/test_images/SouthNM_Elevation_1km.tif"
   landcover_path = base_path + "/test_images/SouthNM_Landcover_1km.tif"
   land_acquisition_path = base_path + "/test_images/SouthNM_LandAcquisition_1km.tif"
+
   roads_path = base_path + "/test_images/SouthNM_Roads_1km.shp"
 
 
@@ -170,7 +171,7 @@ def test_findsites_with_shared_memory():
       'elevation_score.tif', 'best_detectors.prj', 'total_score.tif',
       'best_detectors.dbf', 'scores.csv', 'landcover_score.tif',
       'best_detectors.shp', 'best_detectors.cpg', 'tilt_score.tif',
-      'best_detectors.shx'
+      'best_detectors.shx', 'total_score_minus_land_acq.tif'
   ]
   output_file_names = os.listdir(temp_path)
   for name in expected_files:
@@ -217,6 +218,6 @@ def test_findsites_with_shared_memory():
       rows = 0
       for row in reader:
         rows += 1
-        assert len(row) == 10
+        assert len(row) == 11
       assert rows > 2 # if search succeeded, at least header + 1 row
       csvfile.close()

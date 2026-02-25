@@ -574,6 +574,7 @@ def suitability_scores(
             "landcover_score": factor_to_make_no_value_large * np.abs(no_data_value),
             "land_acquisition_score": factor_to_make_no_value_large * np.abs(no_data_value),
             "roads_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "total_score_m_lacq": factor_to_make_no_value_large * np.abs(no_data_value),
             "total_score": factor_to_make_no_value_large * np.abs(no_data_value)
         }
 
@@ -589,6 +590,7 @@ def suitability_scores(
                                 detector["dl_for_arms_meters"])
     land_acquisition = land_acquisition_score(pix_data["land_acquisition"]["values"], 
                                               detector["dl_for_arms_meters"])
+    total_score_m_lacq = elevation_score + tilt_score + landcover + roads_score
     total_score = elevation_score + tilt_score + landcover + land_acquisition + roads_score
     if include_pixel_data:
         return {
@@ -597,6 +599,7 @@ def suitability_scores(
             "landcover_score": landcover,
             "land_acquisition_score": land_acquisition,
             "roads_score": roads_score,
+            "total_score_m_lacq": total_score_m_lacq,
             "total_score": total_score,
             "pixel_data": pix_data,
             "crossings_data": roads_crossings_df
@@ -608,6 +611,7 @@ def suitability_scores(
             "landcover_score": landcover,
             "land_acquisition_score": land_acquisition,
             "roads_score": roads_score,
+            "total_score_m_lacq": total_score_m_lacq,
             "total_score": total_score
         }
 
@@ -685,6 +689,7 @@ def score_detector_from_grid(
             "landcover_score": factor_to_make_no_value_large * np.abs(no_data_value),
             "land_acquisition_score": factor_to_make_no_value_large * np.abs(no_data_value),
             "roads_score": factor_to_make_no_value_large * np.abs(no_data_value),
+            "total_score_m_lacq": factor_to_make_no_value_large * np.abs(no_data_value),
             "total_score": factor_to_make_no_value_large * np.abs(no_data_value)
         }
         print("Detector that failed:")
@@ -708,6 +713,7 @@ def score_detector_from_grid(
         "landcover_score": scores["landcover_score"],
         "land_acquisition_score": scores["land_acquisition_score"],
         "roads_score": scores["roads_score"],
+        "total_score_m_lacq": scores["total_score_m_lacq"],
         "total_score": scores["total_score"]
     }
     return result
