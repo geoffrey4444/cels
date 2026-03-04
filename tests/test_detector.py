@@ -233,6 +233,8 @@ def test_write_shapefile_of_detectors():
                           detectors_and_inputs[i][6]["land_acquisition_score"] < eps)
             assert np.abs(output[2 * i].properties["road_score"] -
                           detectors_and_inputs[i][6]["roads_score"] < eps)
+            assert np.abs(output[2 * i].properties["totmlacq_s"] -
+                          detectors_and_inputs[i][6]["total_score_m_lacq"] < eps)
             assert np.abs(output[2 * i].properties["tot_score"] -
                           detectors_and_inputs[i][6]["total_score"] < eps)
 
@@ -259,5 +261,7 @@ def test_write_shapefile_of_detectors():
                           detectors_and_inputs[i][6]["land_acquisition_score"]) < eps
             assert np.abs(output[2 * i + 1].properties["road_score"] -
                           detectors_and_inputs[i][6]["roads_score"]) < eps
+            assert np.abs(output[2 * i + 1].properties["totmlacq_s"] -
+                          detectors_and_inputs[i][6]["total_score_m_lacq"]) < eps
             assert np.abs(output[2 * i + 1].properties["tot_score"] -
                           detectors_and_inputs[i][6]["total_score"]) < eps

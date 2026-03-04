@@ -5,7 +5,12 @@ import csv
 import geopandas as gpd
 from shapely import Point
 
-def get_more_Ls(score_threshold, csvpath, outdir_path, arm_length, dl_arms, blob, state_name, shapefile):
+def get_more_Ls(score_threshold, csvpath, outdir_path, arm_length, dl_arms, blob, state_name, shapefile, remove_landacq):
+
+    if remove_landacq:
+        score_string = "total_score_m_lacq"
+    else:
+        score_string = "total_score"
 
     if blob:
         assert state_name == None, "State name and blob shouldn't both be specified"
@@ -16,7 +21,7 @@ def get_more_Ls(score_threshold, csvpath, outdir_path, arm_length, dl_arms, blob
         with open (csvpath) as csvfile:
             reader = csv.DictReader(csvfile, delimiter=' ')
             for row in reader:
-                if float(row["total_score"]) > score_threshold:
+                if float(row[score_string]) > score_threshold:
                     break
                 x,y = float(row["vertex_x"]), float(row["vertex_y"])
                 point_xy = Point(x,y) 
@@ -26,6 +31,7 @@ def get_more_Ls(score_threshold, csvpath, outdir_path, arm_length, dl_arms, blob
                           "landcover_score": float(row["landcover_score"]),
                           "land_acquisition_score": float(row["land_acquisition_score"]),
                           "roads_score": float(row["roads_score"]),
+                          "total_score_m_lacq": float(row["total_score_m_lacq"]),
                           "total_score": float(row["total_score"])}
                     detectors.append(Detector.detector(arm_length, dl_arms, 
                                  float(row["#opening_angle"]),
@@ -44,7 +50,7 @@ def get_more_Ls(score_threshold, csvpath, outdir_path, arm_length, dl_arms, blob
         with open (csvpath) as csvfile:
             reader = csv.DictReader(csvfile, delimiter=' ')
             for row in reader:
-                if float(row["total_score"]) > score_threshold:
+                if float(row[score_string]) > score_threshold:
                     break
                 lon,lat = xy_to_lonlat(float(row["vertex_x"]), float(row["vertex_y"]), 5070)
                 point_lonlat = Point(lon,lat)
@@ -54,6 +60,7 @@ def get_more_Ls(score_threshold, csvpath, outdir_path, arm_length, dl_arms, blob
                           "landcover_score": float(row["landcover_score"]),
                           "land_acquisition_score": float(row["land_acquisition_score"]),
                           "roads_score": float(row["roads_score"]),
+                          "total_score_m_lacq": float(row["total_score_m_lacq"]),
                           "total_score": float(row["total_score"])}
                     detectors.append(Detector.detector(arm_length, dl_arms, 
                                  float(row["#opening_angle"]),
@@ -69,13 +76,14 @@ def get_more_Ls(score_threshold, csvpath, outdir_path, arm_length, dl_arms, blob
         with open (csvpath) as csvfile:
             reader = csv.DictReader(csvfile, delimiter=' ')
             for row in reader:
-                if float(row["total_score"]) > score_threshold:
+                if float(row[score_string]) > score_threshold:
                     break
                 scores = {"elevation_score": float(row["elevation_score"]),
                           "tilt_score": float(row["tilt_score"]),
                           "landcover_score": float(row["landcover_score"]),
                           "land_acquisition_score": float(row["land_acquisition_score"]),
                           "roads_score": float(row["roads_score"]),
+                          "total_score_m_lacq": float(row["total_score_m_lacq"]),
                           "total_score": float(row["total_score"])}
                 detectors.append(Detector.detector(arm_length, dl_arms, 
                                  float(row["#opening_angle"]),
@@ -130,10 +138,14 @@ def main():
         type = float,
         help = "dL of interferometer arms in meters",
         default = 100.0)
+    p.add_argument(
+        '--remove_lacq',
+        action = "store_true",
+        help = "Sort detectors by total score - land acquisition cost (default False)")
     args = p.parse_args()
     print(args)
     
-    get_more_Ls(args.threshold, args.scores_csv, args.outdir_path, args.arm_length_meters, args.dl_arms_meters, args.blob, args.state, args.shapefile)
+    get_more_Ls(args.threshold, args.scores_csv, args.outdir_path, args.arm_length_meters, args.dl_arms_meters, args.blob, args.state, args.shapefile, args.remove_lacq)
 
 if __name__ == '__main__':
     main()

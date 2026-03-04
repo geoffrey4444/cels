@@ -545,6 +545,8 @@ def test_suitability_scores():
     scores = Score.suitability_scores(rasters, shapefiles, no_data_value, detector, True)
 
     eps_pix_data = 1.e-12
+    assert scores['total_score_m_lacq'] == scores["elevation_score"] + scores[
+        "tilt_score"] + scores["landcover_score"] + scores["roads_score"]
     assert scores['total_score'] == scores["elevation_score"] + scores[
         "tilt_score"] + scores["landcover_score"] + scores[
         "land_acquisition_score"] + scores["roads_score"]

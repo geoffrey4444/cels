@@ -161,6 +161,9 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
         "roads_score":
         np.zeros((number_of_opening_angles, number_of_rotation_angles,
                   grid_rows, grid_cols)),
+        "total_score_m_lacq":
+        np.zeros((number_of_opening_angles, number_of_rotation_angles,
+                  grid_rows, grid_cols)),
         "total_score":
         np.zeros((number_of_opening_angles, number_of_rotation_angles,
                   grid_rows, grid_cols)),
@@ -234,6 +237,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                     score_col] = score["land_acquisition_score"]
                 result["roads_score"][score_i][score_j][score_row][
                     score_col] = score["roads_score"]
+                result["total_score_m_lacq"][score_i][score_j][score_row][
+                    score_col] = score["total_score_m_lacq"]
                 result["total_score"][score_i][score_j][score_row][
                     score_col] = score["total_score"]
                 tasks_done += 1
@@ -284,6 +289,9 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
         np.log10(eps +
                  np.min(np.min(result["land_acquisition_score"], axis=0), axis=0)),
         axis=0)
+    best_total_m_lacq = np.flip(np.log10(
+        np.min(np.min(result["total_score_m_lacq"], axis=0), axis=0)),
+                         axis=0)
     best_total = np.flip(np.log10(
         np.min(np.min(result["total_score"], axis=0), axis=0)),
                          axis=0)
@@ -303,6 +311,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                           log10_no_data_times_big_factor) < eps_for_log] = no_data
     best_land_acquisition[np.abs(best_land_acquisition -
                           log10_no_data_times_big_factor) < eps_for_log] = no_data
+    best_total_m_lacq[np.abs(best_total - log10_no_data_times_big_factor) < eps_for_log] = no_data
     best_total[np.abs(best_total - log10_no_data_times_big_factor) < eps_for_log] = no_data
 
     with rio.open(path_for_output + "/elevation_score.tif", "w",
@@ -317,6 +326,9 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     with rio.open(path_for_output + "/land_acquisition_score.tif", "w",
                   **out_profile) as out_geofile:
         out_geofile.write(best_land_acquisition, 1)
+    with rio.open(path_for_output + "/total_score_minus_land_acq.tif", "w",
+                  **out_profile) as out_geofile:
+        out_geofile.write(best_total_m_lacq, 1)
     with rio.open(path_for_output + "/total_score.tif", "w",
                   **out_profile) as out_geofile:
         out_geofile.write(best_total, 1)
@@ -325,7 +337,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     print(str(datetime.now()) + " -- Outputting csv")
     detectors = []
     legend = "#opening_angle rotation_angle vertex_x vertex_y elevation_score"
-    legend += " tilt_score landcover_score land_acquisition_score roads_score total_score\n"
+    legend += " tilt_score landcover_score land_acquisition_score roads_score total_score_m_lacq total_score\n"
     with open(path_for_output + "/scores.csv", "w") as out_ascii:
         out_ascii.write(legend)
         for i, opening_angle in enumerate(opening_angles):
@@ -352,6 +364,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                         row_text += str(
                             result["roads_score"][i][j][row][col]) + " "
                         row_text += str(
+                            result["total_score_m_lacq"][i][j][row][col]) + " "
+                        row_text += str(
                             result["total_score"][i][j][row][col]) + "\n"
                         out_ascii.write(row_text)
                         detector_scores = {
@@ -365,6 +379,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                             result["land_acquisition_score"][i][j][row][col],
                             "roads_score":
                             result["roads_score"][i][j][row][col],
+                            "total_score_m_lacq":
+                            result["total_score_m_lacq"][i][j][row][col],
                             "total_score":
                             result["total_score"][i][j][row][col]
                         }
