@@ -445,7 +445,7 @@ def elevation_and_tilt_score(detector, elevation_pixel_data):
     # I don't know where the 10 comes from; it sets the importance of this
     # score over other scores. The normalization
     # tilt_0 = 0.5 * arm_length_meters / earth_radius_meters
-    # is meant to capture the minimum arm tilt because of Earth's curvature.
+    # is meant to capture the minimum mirror tilt because of Earth's curvature.
     tilt_0 = 0.5 * detector["arm_length_meters"] / earth_radius_meters
     tilt_score = 10.0 * (np.square(x_tilt / tilt_0) +
                          np.square(y_tilt / tilt_0))
