@@ -477,19 +477,19 @@ road_labels = {
 }
 
 
-# Associated cost of roads per road type. These are uncalibrated for now,
-# associating the highest cost to interstate highways. US highways are
-# given the second highest cost. Other and Common Name roads
-# can vary in size and usage and are given a score of 50. County and "other"
-# roads are assigned a cost of 10. 
+# Associated cost of roads per road type. These are estimated using the parametric
+# model described in CE-P2600003. The values are estimated for 2-lane grade
+# separated overpasses and underpasses in a rural or suburban setting. We use the 
+# values associated with underpass costs, as they are more expensive than overpasses. 
+# Future updates will include both overpasses and underpasses.
 
 road_score_by_type = {
-    "C": 10.0,
-    "I": 100.0,
-    "M":50.0,
-    "O":10.0,
-    "S":50.0,
-    "U":75.0,
+    "C": 12.0,
+    "I": 43.0,
+    "M": 14.0,
+    "O": 18.0,
+    "S": 21.0,
+    "U": 25.0,
 }
 
 
