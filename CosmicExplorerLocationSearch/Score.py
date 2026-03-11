@@ -369,8 +369,9 @@ def elevation_and_tilt_score(detector, elevation_pixel_data):
     depth = depth_tilt["depth"]
 
     # Compute the elevation score
-    # CE-T2000016-v2 estimates the width of trench/berm at 4 meters
-    width_meters = 4.0
+    # Estimated width of 18 m for trench/berm for the beamtube and two roads, 
+    # based on the width for LHO and LLO (beamtube and one road) which is 15 m
+    width_meters = 18.0
 
     # The angle of repose is hard-coded here as 45 degrees, following
     # CE-T2000016-v2, which explains that this is a conservative estimate.

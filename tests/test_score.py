@@ -42,7 +42,7 @@ def test_pixel_data_from_rasters():
     # and make sure the detector pixel data agrees
     x_pixel_size = profile["transform"][0]
     y_pixel_size = -1.0 * profile["transform"][4]
-    detector_width = 4
+    detector_width = 18
     arm_length = x_pixel_size * detector_width
     dl_for_arm_length = x_pixel_size
     # The following vertex coordinates place the detector overlapping the
@@ -436,12 +436,14 @@ def test_elevation_and_tilt_score():
         detector, Score.ideal_beamtube_depth_meters(detector))
     # CE-T2000016-v2 explains the elevation score has nominal units of $1M USD
     # Here, check that for an ideal elevation, the elevation score is
-    # less than 2 (nominal cost < $2M USD). In practice, the best sites
-    # found in a national search for 40-km, 90-degree-opening-angle detectors
-    # had scores O(10). The score could likely be smaller here with a better
-    # fit; this threshold is chosen empirically based on how well the
-    # current fit can recover zero cost.
-    assert np.abs(ideal_scores["elevation"]) < 2
+    # less than 5 (nominal cost < $5M USD). In v4, with a berm/trench
+    # width of 4 m, this nominal cost was taken to be $2M USD; here we have
+    # increased the threshold to reflect the increase in volume from changing
+    # the width to w = 18 m. In practice, the best sites found in a national 
+    # search for 40-km, 90-degree-opening-angle detectors had scores O(10). 
+    # The score could likely be smaller here with a better fit; this threshold is
+    # chosen empirically based on how well the current fit can recover zero cost.
+    assert np.abs(ideal_scores["elevation"]) < 5
     # Check for ideal elevation that the tilt score is negligible
     assert np.abs(ideal_scores["tilt"]) < 1.e-2
 
@@ -475,7 +477,7 @@ def test_elevation_and_tilt_score():
                            depth_and_tilt["y_tilt"]**2) * 10.0 / (tilt_0**2)
 
     cut_fill_volume = depth_and_tilt["depth"] * (
-        np.abs(depth_and_tilt["depth"]) + 4.0) * detector["dl_for_arms_meters"]
+        np.abs(depth_and_tilt["depth"]) + 18.0) * detector["dl_for_arms_meters"]
     cut_fill_volume[cut_fill_volume < -500.0 *
                     detector["dl_for_arms_meters"]] = -500.0 * detector[
                         "dl_for_arms_meters"]
