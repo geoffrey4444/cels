@@ -10,7 +10,7 @@ build-and-test:
     - apt update
     - apt upgrade -y
     - apt install -y build-essential
-    - apt install -y python3-venv
+    - apt install -y python3-venv python3-dev
     - apt install -y libgdal-dev
     - apt install -y libproj-dev
     - python3 -m venv testenv
@@ -22,3 +22,7 @@ build-and-test:
     when: always
     reports:
       junit: report.xml
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never 
+    - when: always
