@@ -69,7 +69,7 @@ def pixel_data_from_shared_memory(shm_name, transform, nodata_value, detector,
     }
 
 
-# The landcover "type" includes descriptions and codes follow the 
+# The landcover "type" includes descriptions and codes follow the
 # National Land Cover DatabaseLand Cover Classification Legend, available at
 # https://www.mrlc.gov/sites/default/files/NLCDclasses.pdf
 # The codes for Ocean Water (0) and Non-U.S. land (101, 102, 103) conform to
@@ -77,43 +77,58 @@ def pixel_data_from_shared_memory(shm_name, transform, nodata_value, detector,
 # United States, 2001 geotiff, available at
 # https://geodata.mit.edu/catalog/stanford-wv372bn9329.
 # The "score" given here for each landcover type is a cost in units of US dollars per acre.
-# These costs represent rough (one significant digit) estimates for clearing land 
-# with that type of landcover to "brown field" conditions (or in the case of open water 
-# or ocean, building a bridge). 
-# Note that effects such costs varying by region and economies of scale 
-# (clearing 100 acres is less than 100 times as expensive as clearing one acre) are not 
-# currently taken into account. Note also that land acquisition costs will be costed 
-# separately in a future merge request. 
-# Some references for acre clearing/bridge costs include: 
+# These costs represent rough (one significant digit) estimates for clearing land
+# with that type of landcover to "brown field" conditions (or in the case of open water
+# or ocean, building a bridge).
+# Note that effects such costs varying by region and economies of scale
+# (clearing 100 acres is less than 100 times as expensive as clearing one acre) are not
+# currently taken into account. Note also that land acquisition costs will be costed
+# separately in a future merge request.
+# Some references for acre clearing/bridge costs include:
 # [1] https://www.fixr.com/costs/land-clearing-and-building-site-preparation
 # [2] https://www.danieldean.com/how-much-does-it-cost-to-clear-land-in-2025/
 # [3] https://georgehardscaping.com/commercial-snow-removal-pricing-calculator/
-# [4] https://deltademolitioncontractor.com/blog/how-much-does-it-cost-to-remove-a-parking-lot/  
+# [4] https://deltademolitioncontractor.com/blog/how-much-does-it-cost-to-remove-a-parking-lot/
 # [5] https://www.wsdot.wa.gov/eesc/bridge/WBES/2017/Session8/8A3-Saindon.pdf
-# When these cost values are are changed, test_landcover_score_by_type() in test_score.py 
+# When these cost values are are changed, test_landcover_score_by_type() in test_score.py
 # must also change.
 landcover_score_by_type = {
-    0: 7e6,  # ocean; Bridge costs ([5], example 4) $150/ft^2 * 43,560 ft^2/acre=$6,534,000.
-    11: 7e6,  # open water; Bridge costs ([5], example 4) $150/ft^2 * 43,560 ft^2/acre=$6,534,000.
-    12: 4e2,  # perennial ice/snow; Commercial snow/ice removal up tp $400 per acre per application [3].
-    21: 6e3,  # developed, open space; Sparse demolition (0.1*$1/ft^2=$4,356/acre [4]) plus clearing ($2,000/acre [2]).
-    22: 2e4,  # developed, low intensity; Low demolition (0.2*$2/ft^2=$17,424/acre [4]) plus clearing ($2,000/acre [2]).
-    23: 5e4,  # developed, medium intensity; Medium demolition (0.3*$3/ft^2=$43,560/acre [4]) plus clearing ($2,000/acre [2]).
-    24: 2e5,  # developed, high intensity; High demolition (1.0*$4/ft^2=$174,240/acre [4]) plus clearing ($2,000/acre [2]).
-    31: 1e3,  # barren land (rock/sand/clay); Clearing ($1,200/acre [1,2]). 
-    41: 6e3,  # deciduous forest; Forest clearing rough average. Clearing ($6,000/acre [1,2]).
-    42: 6e3,  # evergreen forest; Forest clearing rough average. Clearing ($6,000/acre [1,2]).
-    43: 6e3,  # mixed forest; Forest clearing rough average. Clearing ($6,000/acre [1,2]).
+    0: 7e6,  # ocean; Bridge costs ([5], example 4) 
+    #$150/ft^2 * 43,560 ft^2/acre=$6,534,000.
+    11: 7e6,  # open water; Bridge costs ([5], example 4) 
+    #$150/ft^2 * 43,560 ft^2/acre=$6,534,000.
+    12: 4e2,  # perennial ice/snow; Commercial snow/ice removal up to 
+    #$400 per acre per application [3].
+    21: 6e3,  # developed, open space; Sparse demolition 
+    #(0.1*$1/ft^2=$4,356/acre [4]) plus clearing ($2,000/acre [2]).
+    22: 2e4,  # developed, low intensity; Low demolition 
+    #(0.2*$2/ft^2=$17,424/acre [4]) plus clearing ($2,000/acre [2]).
+    23: 5e4,  # developed, medium intensity; Medium demolition 
+    #(0.3*$3/ft^2=$43,560/acre [4]) plus clearing ($2,000/acre [2]).
+    24: 2e5,  # developed, high intensity; High demolition 
+    #(1.0*$4/ft^2=$174,240/acre [4]) plus clearing ($2,000/acre [2]).
+    31: 1e3,  # barren land (rock/sand/clay); 
+    # clearing ($1,200/acre [1,2]).
+    41: 6e3,  # deciduous forest; Forest clearing rough average. 
+    # clearing ($6,000/acre [1,2]).
+    42: 6e3,  # evergreen forest; Forest clearing rough average. 
+    # clearing ($6,000/acre [1,2]).
+    43: 6e3,  # mixed forest; Forest clearing rough average. 
+    # clearing ($6,000/acre [1,2]).
     51: 2e3,  # dwarf scrub; Between barren land and forest [1,2].
-    52: 3e3,  # shrub/scrub; Between barren land and forest, but more vegetation [1,2].
+    52: 3e3,  # shrub/scrub; Between barren land and forest, 
+    # but more vegetation [1,2].
     71: 1e3,  # grassland/herbaceous; Clearing ($1,200/acre [1,2]).
     72: 1e3,  # sedge/herbaceous; Clearing ($1,200/acre [1,2]).
     73: 1e3,  # lichens; Clearing ($1,200/acre [1,2]).
     74: 1e3,  # moss; Clearing ($1,200/acre [1,2]).
     81: 1e3,  # pasture/hay; Clearing ($1,200/acre [1,2]).
     82: 1e3,  # cultivated crops; Clearing ($1,200/acre [1,2]).
-    90: 8e3,  # woody wetlands; Higher than forest clearing costs, clearing regulations ($8,000/acre [2]).
-    95: 8e3,  # emergent herbaceous wetlands; Higher than forest clearing costs, clearing regulations ($8,000/acre [2]).
+    90: 8e3,  # woody wetlands; Higher than forest clearing costs, 
+    # clearing regulations ($8,000/acre [2]).
+    95:
+    8e3,  # emergent herbaceous wetlands; Higher than forest clearing costs,
+    # clearing regulations ($8,000/acre [2]).
     101: 1e8,  # Canada; Exclude, made up number, not considering these areas.
     102: 1e8,  # Mexico; Exclude, made up number, not considering these areas.
     103: 1e8  # Cuba; Exclude, made up number, not considering these areas.
@@ -160,11 +175,12 @@ landcover_labels = {
 earth_radius_meters = 6378100
 
 # Width of the Cosmic Explorer site footprint (300ft, from CE-G2300054) in meters.
-# Hardcoded here. 
+# Hardcoded here.
 arms_footprint_width_meters = 91.44
 
-# Conversion of acres to meters squared, 1 acre = 4046.86 m^2. Hardcoded here. 
+# Conversion of acres to meters squared, 1 acre = 4046.86 m^2. Hardcoded here.
 meters_squared_per_acre = 4046.86
+
 
 def landcover_score(landcover_pixel_data, dl_for_arms_meters):
     """Input: landcover_pixel_data: 1D array of landcover pixel data, e.g. 
@@ -202,12 +218,13 @@ def landcover_score(landcover_pixel_data, dl_for_arms_meters):
       95          Emergent Herbaceous Wetlands
       101 - 103   Non-U.S. Land
     """
-    # Sum over the landcover cost (acre clearing cost in dollars, 
+    # Sum over the landcover cost (acre clearing cost in dollars,
     # times number of acres) for each pixel in the arm
-    # and multiply the result by 1e-6 to get an answer in $1M USD. 
+    # and multiply the result by 1e-6 to get an answer in $1M USD.
     return np.sum(
         np.array([
-            landcover_score_by_type[v] * dl_for_arms_meters * arms_footprint_width_meters / meters_squared_per_acre
+            landcover_score_by_type[v] * dl_for_arms_meters *
+            arms_footprint_width_meters / meters_squared_per_acre
             for v in landcover_pixel_data
         ])) * 1e-6
 
@@ -218,13 +235,14 @@ def land_acquisition_score(land_acquisition_pixel_data, dl_for_arms_meters):
 
     Output: Total land acquisition cost
     """
-    # Sum over the land acquisition cost (cost in dollars per acre, 
+    # Sum over the land acquisition cost (cost in dollars per acre,
     # times number of acres) for each pixel in the arm
-    # and multiply the result by 1e-6 to get an answer in $1M USD. 
+    # and multiply the result by 1e-6 to get an answer in $1M USD.
     return np.sum(
         np.array([
-            land_acquisition_pixel_data * dl_for_arms_meters * arms_footprint_width_meters / meters_squared_per_acre
-            ])) * 1e-6
+            land_acquisition_pixel_data * dl_for_arms_meters *
+            arms_footprint_width_meters / meters_squared_per_acre
+        ])) * 1e-6
 
 
 def ideal_beamtube_depth_meters(detector):
@@ -369,7 +387,7 @@ def elevation_and_tilt_score(detector, elevation_pixel_data):
     depth = depth_tilt["depth"]
 
     # Compute the elevation score
-    # Estimated width of 18 m for trench/berm for the beamtube and two roads, 
+    # Estimated width of 18 m for trench/berm for the beamtube and two roads,
     # based on the width for LHO and LLO (beamtube and one road) which is 15 m
     width_meters = 18.0
 
@@ -462,10 +480,8 @@ def elevation_and_tilt_score(detector, elevation_pixel_data):
     return result
 
 
-
 # These descriptions follow the RTTYP (Route Type Code) classification scheme,
 # as defined by https://www.census.gov/library/reference/code-lists/route-type-codes.html
-
 
 road_labels = {
     "C": "County",
@@ -476,11 +492,10 @@ road_labels = {
     "U": "US",
 }
 
-
 # Associated cost of roads per road type. These are estimated using the parametric
 # model described in CE-P2600003. The values are estimated for 2-lane grade
-# separated overpasses and underpasses in a rural or suburban setting. We use the 
-# values associated with underpass costs, as they are more expensive than overpasses. 
+# separated overpasses and underpasses in a rural or suburban setting. We use the
+# values associated with underpass costs, as they are more expensive than overpasses.
 # Future updates will include both overpasses and underpasses.
 
 road_score_by_type = {
@@ -493,20 +508,33 @@ road_score_by_type = {
 }
 
 
-def roads_scores(roads_shapefile_path, detector):
+def roads_scores(detector, roads_shapefile_path=None, roads_geodataframe=None):
     """
     Input:
         detector: output of Detector.detector()
-        roads_shapefile_path: path to a shapefile containing roads information
+        roads_shapefile_path: path to a shapefile containing roads information.
+        roads_geodataframe: a GeoDataFrame containing roads information to
+                            avoid reading from disk multiple times.
+        
     Output:
         result:
             *"crossings": A GeoDataFrame containing all crossing points with major
             US roads, the RTTYP road type, the full road name
             *"score_roads": A "roads" suitability score for this detector
     """
-    roads = gpd.read_file(roads_shapefile_path).to_crs(5070)
-    detector_df = gpd.GeoDataFrame(geometry=[Detector.detector_to_multiline_string(detector)], crs='EPSG:5070')
-    crossings = gpd.overlay(roads, detector_df, how='intersection', keep_geom_type=False)
+    # Convert the roads shapefile to a GeoDataFrame if it is not already
+    # Allows faster sampling of multiple detectors with asterisk optimization
+    if roads_shapefile_path is None:
+        roads = roads_geodataframe
+    else:
+        roads = gpd.read_file(roads_shapefile_path).to_crs(5070)
+    detector_df = gpd.GeoDataFrame(
+        geometry=[Detector.detector_to_multiline_string(detector)],
+        crs='EPSG:5070')
+    crossings = gpd.overlay(roads,
+                            detector_df,
+                            how='intersection',
+                            keep_geom_type=False)
     score_roads = 0
     for c in crossings.itertuples():
         score_roads += road_score_by_type[c.RTTYP]
@@ -516,23 +544,110 @@ def roads_scores(roads_shapefile_path, detector):
     return result
 
 
+def has_nodata(pix_data, no_data_value):
+    """
+    input:
+      pix_data: dictionary of pixel data
+      no_data_value: value used to represent no data in the raster
+    output:
+      True if any of the pixel data contains no data values, False otherwise
+      
+      Function that handles the case where the pixel data contains no data values, or values representing areas not under consideration."""
+    # Check if any of the pixel data contains no data, or excluded values.
+    return ((0 in pix_data["landcover"]["values"])  # represents ocean water
+            or (101 in pix_data["landcover"]["values"]
+                )  # represents non-U.S. land (Canada)
+            or (102 in pix_data["landcover"]["values"]
+                )  # represents non-U.S. land (Mexico)
+            or (103 in pix_data["landcover"]["values"]
+                )  # represents non-U.S. land (Cuba)
+            or (no_data_value in pix_data["landcover"]["values"])
+            or (no_data_value in pix_data["elevation"]["values"])
+            or (no_data_value in pix_data["land_acquisition"]["values"]))
 
 
-def suitability_scores(
-        raster_paths,
-        shapefiles_paths,
-        no_data_value,
-        detector,
-        include_pixel_data,
-        use_shared_memory=False,
-        shared_memory_info=None):
+def nodata_scores(no_data_value):
+    """
+    Input:
+      no_data_value: value used to represent no data in the raster
+    Output:
+      A dictionary of scores with large values to indicate that the detector has not data
+    Function that returns a dict with large scores for when a detector has no data values in its pixel data."""
+    factor_to_make_no_value_large = 1000000000
+    return {
+        k: factor_to_make_no_value_large * np.abs(no_data_value)
+        for k in ("elevation_score", "tilt_score", "landcover_score",
+                  "land_acquisition_score", "roads_score",
+                  "total_score_m_lacq", "total_score")
+    }
+
+
+def compute_scores(pix_data,
+                   detector,
+                   no_data_value,
+                   include_pixel_data,
+                   roads_shapefile_path=None,
+                   roads_geodataframe=None):
+    """
+    input:
+        pix_data: dictionary of pixel data
+        detector: output of Detector.detector()
+        no_data_value: value used to represent no data in the raster
+        include_pixel_data: if true, add a key to the returned scores
+        roads_shapefile_path: path to a shapefile containing roads information
+        roads_geodataframe: GeoDataFrame containing roads information
+    Returns:
+        A dictionary of scores for the detector
+    Function that handles detector scoring, with or without asterisk
+    optimization."""
+
+    if has_nodata(pix_data, no_data_value):
+        return nodata_scores(no_data_value)
+    elevation_tilt_scores = elevation_and_tilt_score(
+        detector, pix_data["elevation"]["values"])
+    elevation_score = elevation_tilt_scores["elevation"]
+    tilt_score = elevation_tilt_scores["tilt"]
+    roads = roads_scores(detector,
+                         roads_shapefile_path=roads_shapefile_path,
+                         roads_geodataframe=roads_geodataframe)
+    roads_score = roads["score_roads"]
+    landcover = landcover_score(pix_data["landcover"]["values"],
+                                detector["dl_for_arms_meters"])
+    land_acquisition = land_acquisition_score(
+        pix_data["land_acquisition"]["values"], detector["dl_for_arms_meters"])
+    total_score_m_lacq = elevation_score + tilt_score + landcover + roads_score
+    total_score = total_score_m_lacq + land_acquisition
+    score_dict = {
+        "elevation_score": elevation_score,
+        "tilt_score": tilt_score,
+        "landcover_score": landcover,
+        "land_acquisition_score": land_acquisition,
+        "roads_score": roads_score,
+        "total_score_m_lacq": total_score_m_lacq,
+        "total_score": total_score,
+    }
+    if include_pixel_data:
+        roads_crossings_df = roads["crossings"]
+        score_dict["pixel_data"] = pix_data
+        score_dict["crossings_data"] = roads_crossings_df
+    return score_dict
+
+
+def suitability_scores(raster_paths,
+                       shapefiles_paths,
+                       no_data_value,
+                       detector,
+                       include_pixel_data,
+                       use_shared_memory=False,
+                       shared_memory_info=None):
     """
     Input:
       detector: output of Detector.detector()
       include_pixel_data: if true, add a key to the returned scores
                           dictionary holding the pixel_data (e.g. for plotting)
       use_shared_memory: if true, use shared memory for raster data
-      shared_memory_info: dict containing shared memory metadata (required if use_shared_memory=True)
+      shared_memory_info: dict containing shared memory metadata 
+                          (required if use_shared_memory=True)
     Output:
       scores: dictionary of suitability scores, including "total" which is the 
               sum of the other scores in the dictionary
@@ -541,80 +656,65 @@ def suitability_scores(
        repeatedly for many detectors. To just get pixel data for one or 
        a few detectors, use pixel_data_from_raster_files().
     """
+
     if use_shared_memory:
         if shared_memory_info is None:
-            raise ValueError("shared_memory_info must be provided when use_shared_memory=True")
+            raise ValueError(
+                "shared_memory_info must be provided when use_shared_memory=True"
+            )
         pix_data = {}
         for raster_type in ["elevation", "landcover", "land_acquisition"]:
             shm_info = shared_memory_info[raster_type]
             pix_data[raster_type] = pixel_data_from_shared_memory(
-                shm_info["shared_data_name"],
-                shm_info["affine_transform"],
-                shm_info["nodata_value"],
-                detector,
-                shm_info["shape"],
-                shm_info["dtype"]
-            )
+                shm_info["shared_data_name"], shm_info["affine_transform"],
+                shm_info["nodata_value"], detector, shm_info["shape"],
+                shm_info["dtype"])
     else:
         pix_data = pixel_data_from_rasters(raster_paths, detector)
-    # If L contains pixels in ocean (0) or other country (101-103), assign
-    # nodata to scores and return
-    if ((0 in pix_data["landcover"]["values"])
-            # or (11 in pix_data["landcover"]["values"])
-            or (101 in pix_data["landcover"]["values"]) or
-        (102 in pix_data["landcover"]["values"]) or
-        (103 in pix_data["landcover"]["values"]) or
-        (no_data_value in pix_data["landcover"]["values"]) or
-        (no_data_value in pix_data["elevation"]["values"]) or
-        (no_data_value in pix_data["land_acquisition"]["values"])):
-        factor_to_make_no_value_large = 1000000000
-        return {
-            # Take abs of no_data_value in case that value is negative
-            "elevation_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "tilt_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "landcover_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "land_acquisition_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "roads_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "total_score_m_lacq": factor_to_make_no_value_large * np.abs(no_data_value),
-            "total_score": factor_to_make_no_value_large * np.abs(no_data_value)
-        }
+    roads_gdf = gpd.read_file(shapefiles_paths["roads"]).to_crs(5070)
+    return compute_scores(pix_data,
+                          detector,
+                          no_data_value,
+                          include_pixel_data,
+                          roads_shapefile_path=None,
+                          roads_geodataframe=roads_gdf)
 
-    elevation_tilt_scores = elevation_and_tilt_score(
-        detector, pix_data["elevation"]["values"])
-    elevation_score = elevation_tilt_scores["elevation"]
-    tilt_score = elevation_tilt_scores["tilt"]
-    roads_path = shapefiles_paths["roads"]
-    roads = roads_scores(roads_path, detector)
-    roads_score = roads["score_roads"]
-    roads_crossings_df = roads["crossings"]
-    landcover = landcover_score(pix_data["landcover"]["values"],
-                                detector["dl_for_arms_meters"])
-    land_acquisition = land_acquisition_score(pix_data["land_acquisition"]["values"], 
-                                              detector["dl_for_arms_meters"])
-    total_score_m_lacq = elevation_score + tilt_score + landcover + roads_score
-    total_score = elevation_score + tilt_score + landcover + land_acquisition + roads_score
-    if include_pixel_data:
-        return {
-            "elevation_score": elevation_score,
-            "tilt_score": tilt_score,
-            "landcover_score": landcover,
-            "land_acquisition_score": land_acquisition,
-            "roads_score": roads_score,
-            "total_score_m_lacq": total_score_m_lacq,
-            "total_score": total_score,
-            "pixel_data": pix_data,
-            "crossings_data": roads_crossings_df
-        }
-    else:
-        return {
-            "elevation_score": elevation_score,
-            "tilt_score": tilt_score,
-            "landcover_score": landcover,
-            "land_acquisition_score": land_acquisition,
-            "roads_score": roads_score,
-            "total_score_m_lacq": total_score_m_lacq,
-            "total_score": total_score
-        }
+
+def build_result_dict(arm_length_meters, dl_for_arms_meters,
+                      opening_angle_degrees, rotation_angle_degrees, vertex_x,
+                      vertex_y, opening_angle_i, rotation_angle_j, vertex_row,
+                      vertex_col, scores):
+    """Build the result dict returned by score_detector_from_grid and
+    score_detector_from_grid_asterisk, combining grid metadata with scores.
+    Input:
+      arm_length_meters: detector arm length (meters)
+      dl_for_arms_meters: distance between sample points (meters)
+      opening_angle_degrees: detector opening angle (degrees)
+      rotation_angle_degrees: rotation angle (degrees)
+      vertex_x: vertex x coordinate (meters)
+      vertex_y: vertex y coordinate (meters)
+      opening_angle_i: opening angle index number
+      rotation_angle_j: rotation angle index number
+      vertex_row: row index of the vertex in the grid
+      vertex_col: column index of the vertex in the grid
+      scores: dict of scores returned by suitability_scores()
+    Returns:
+        result: dict containing all input parameters except raster_file_dict,
+                as well as the scores returned by suitability_scores()
+    """
+    return {
+        "arm_length_meters": arm_length_meters,
+        "dl_for_arms_meters": dl_for_arms_meters,
+        "opening_angle_degrees": opening_angle_degrees,
+        "rotation_angle_degrees": rotation_angle_degrees,
+        "vertex_x": vertex_x,
+        "vertex_y": vertex_y,
+        "opening_angle_i": opening_angle_i,
+        "rotation_angle_j": rotation_angle_j,
+        "vertex_row": vertex_row,
+        "vertex_col": vertex_col,
+        **scores,
+    }
 
 
 def score_detector_from_grid(
@@ -635,7 +735,7 @@ def score_detector_from_grid(
     shared_memory_info=None,
 ):
     """
-    Score one detector from a 2D array of detector vertex locations. Note: 
+    Score one detector from a 2D array of detector vertex locations. Note:
     this function is meant to be called asynchronously.
     Input:
       raster_paths: dict containing paths to rasters keyed by "elevation",
@@ -652,69 +752,237 @@ def score_detector_from_grid(
       opening_angle_i: which angle corresponds to opening_angle_degrees
       rotation_angle_j: which angle corresponds to rotation_angle_j
       vertex_row: row of a grid of vertex positions corresponding to vertex_y
-      vertex_col: column of a grid of vertex positions corresponding to vertex_x      
-    Note: opening_angle_i, rotation_angle_j, vertex_row, vertex_col are provided 
-    only so they can be returned, so results can be assembled in to an array 
+      vertex_col: column of a grid of vertex positions corresponding to vertex_x
+    Note: opening_angle_i, rotation_angle_j, vertex_row, vertex_col are provided
+    only so they can be returned, so results can be assembled in to an array
     asynchronously.
-
-    Output:
+ 
+    Returns:
       scores: dict containing all input parameters except raster_file_dict,
-              as well as the scores returned by 
+              as well as the scores returned by
               suitability_scores(include_pixel_data=False).
     """
     detector = Detector.detector(arm_length_meters, dl_for_arms_meters,
                                  opening_angle_degrees, rotation_angle_degrees,
                                  vertex_x, vertex_y)
     try:
-        scores = suitability_scores(raster_paths, shapefiles_paths, no_data_value, detector,
-                                    False, use_shared_memory, shared_memory_info)
+        scores = suitability_scores(raster_paths, shapefiles_paths,
+                                    no_data_value, detector, False,
+                                    use_shared_memory, shared_memory_info)
     except Exception as error:
         print("\nUnexpected error scoring detector:")
         print(error)
-
-        # Return no data for this detector
-        factor_to_make_no_value_large = 1000000000
-        result = {
-            "arm_length_meters": arm_length_meters,
-            "dl_for_arms_meters": dl_for_arms_meters,
-            "opening_angle_degrees": opening_angle_degrees,
-            "rotation_angle_degrees": rotation_angle_degrees,
-            "vertex_x": vertex_x,
-            "vertex_y": vertex_y,
-            "opening_angle_i": opening_angle_i,
-            "rotation_angle_j": rotation_angle_j,
-            "vertex_row": vertex_row,
-            "vertex_col": vertex_col,
-            "elevation_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "tilt_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "landcover_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "land_acquisition_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "roads_score": factor_to_make_no_value_large * np.abs(no_data_value),
-            "total_score_m_lacq": factor_to_make_no_value_large * np.abs(no_data_value),
-            "total_score": factor_to_make_no_value_large * np.abs(no_data_value)
-        }
+        result = build_result_dict(arm_length_meters, dl_for_arms_meters,
+                                   opening_angle_degrees,
+                                   rotation_angle_degrees, vertex_x, vertex_y,
+                                   opening_angle_i, rotation_angle_j,
+                                   vertex_row, vertex_col,
+                                   nodata_scores(no_data_value))
         print("Detector that failed:")
         print(result)
         print("continuing, reporting no data for this detector\n\n")
         return result
+    return build_result_dict(arm_length_meters, dl_for_arms_meters,
+                             opening_angle_degrees, rotation_angle_degrees,
+                             vertex_x, vertex_y, opening_angle_i,
+                             rotation_angle_j, vertex_row, vertex_col, scores)
 
-    result = {
-        "arm_length_meters": arm_length_meters,
-        "dl_for_arms_meters": dl_for_arms_meters,
-        "opening_angle_degrees": opening_angle_degrees,
-        "rotation_angle_degrees": rotation_angle_degrees,
-        "vertex_x": vertex_x,
-        "vertex_y": vertex_y,
-        "opening_angle_i": opening_angle_i,
-        "rotation_angle_j": rotation_angle_j,
-        "vertex_row": vertex_row,
-        "vertex_col": vertex_col,
-        "elevation_score": scores["elevation_score"],
-        "tilt_score": scores["tilt_score"],
-        "landcover_score": scores["landcover_score"],
-        "land_acquisition_score": scores["land_acquisition_score"],
-        "roads_score": scores["roads_score"],
-        "total_score_m_lacq": scores["total_score_m_lacq"],
-        "total_score": scores["total_score"]
-    }
-    return result
+
+def sample_coords(raster_file_dict,
+                  coords,
+                  use_shared_memory=False,
+                  shared_memory_info=None):
+    """Sample all rasters at the given flat coordinate array.
+    Inputs:
+      raster_file_dict: dictionary of raster file paths
+      coords: 2D array of (x, y) coordinates to sample
+      use_shared_memory: if True, sample from shared memory instead of disk
+      shared_memory_info: dict keyed by raster type (required if use_shared_memory=True)
+    Returns: dict of {raster_name: np.array of sampled values}
+    Function that samples all rasters whether from disk or shared memory,
+    returning a dict of sampled values.
+    """
+    values_by_raster = {}
+    if use_shared_memory:
+        for raster_type in ["elevation", "landcover", "land_acquisition"]:
+            shm_info = shared_memory_info[raster_type]
+            array, shm = Geotiff.get_shared_memory_array(
+                shm_info["shared_data_name"], shm_info["shape"],
+                shm_info["dtype"])
+            try:
+                values_by_raster[raster_type] = np.array(
+                    Geotiff.sample_from_array(array,
+                                              shm_info["affine_transform"],
+                                              shm_info["nodata_value"],
+                                              coords))
+            finally:
+                shm.close()
+    else:
+        for raster_name, raster_path in raster_file_dict.items():
+            with rio.open(raster_path) as f:
+                values_by_raster[raster_name] = np.array(
+                    [s[0] for s in f.sample(coords)])
+    return values_by_raster
+
+
+def pixel_data_from_rasters_asterisk(raster_file_dict,
+                                     arm_list,
+                                     use_shared_memory=False,
+                                     shared_memory_info=None):
+    """
+    Function allows sampling all arms at a point at once, by computing
+    the coordinates for all rotations at once, then combining them into one
+    large array and sampling data in one go.
+    Inputs:
+      raster_file_dict: dictionary of raster file paths
+      arm_list: output of Detector.detector() with asterisk optimization,
+                a list of arm dicts each containing 'arms_xy' coords
+      use_shared_memory: if True, sample from shared memory instead of disk
+      shared_memory_info: dict keyed by raster type
+    Returns:
+      A list of dicts, one per arm. Each dict has the same structure as
+      the output of pixel_data_from_rasters(): keyed by raster name, with
+      sub-dicts containing 'coords' and 'values'.
+    """
+    all_coords = [arm["arms_xy"] for arm in arm_list]
+    arm_lengths = [len(c) for c in all_coords]
+    flat_coords = np.concatenate(all_coords, axis=0)
+
+    values_by_raster = sample_coords(raster_file_dict, flat_coords,
+                                     use_shared_memory, shared_memory_info)
+
+    results, start = [], 0
+    for i, arm in enumerate(arm_list):
+        end = start + arm_lengths[i]
+        results.append({
+            name: {
+                "coords": all_coords[i],
+                "values": vals[start:end]
+            }
+            for name, vals in values_by_raster.items()
+        })
+        start = end
+    return results
+
+
+def suitability_scores_asterisk(paired_pixel_data_asterisk_list,
+                                paired_detector_list, no_data_value,
+                                include_pixel_data, shapefiles_paths):
+    """
+    Score a list of detectors at a single vertex point, when using asterisk sampling optimization
+    Input:
+        paired_pixel_data_asterisk_list: List of paired raster data from pair_raster_coords()
+        paired_detector_list: List of combined detector dictionaries from pair_arm_coords
+        no_data_value,: integer used to represent no data in output rasters
+        include_pixel_data,
+        shapefiles_paths: dict containing paths to vector files keyed by
+                    "roads"
+
+    Output:
+        scored_detectors: list of dictionaries containing the scores for each detector
+    """
+
+    roads_gdf = gpd.read_file(shapefiles_paths["roads"]).to_crs(5070)
+    scored_detectors = []
+    for i, pix_data in enumerate(paired_pixel_data_asterisk_list, start=0):
+        score_dict = compute_scores(pix_data,
+                                    paired_detector_list[i],
+                                    no_data_value,
+                                    include_pixel_data,
+                                    roads_geodataframe=roads_gdf)
+        scored_detectors.append(score_dict)
+    return scored_detectors
+
+
+def score_detector_from_grid_asterisk(
+    raster_paths,
+    shapefiles_paths,
+    no_data_value,
+    arm_length_meters,
+    dl_for_arms_meters,
+    opening_angle_degrees,
+    rotation_angle_degrees,
+    vertex_x,
+    vertex_y,
+    opening_angle_i,
+    rotation_angle_j,
+    vertex_row,
+    vertex_col,
+    number_of_rotation_angs,
+    include_pixel_data=False,
+    use_shared_memory=False,
+    shared_memory_info=None,
+):
+    """
+    Score one detector from a 2D array of detector vertex locations. Note:
+    this function is meant to be called asynchronously.
+    Input:
+      raster_paths: dict containing paths to rasters keyed by "elevation",
+                    "landcover" and "land_acquisition"
+      shapefiles_paths: dict containing paths to vector files keyed by
+                    "roads"
+      no_data_value: integer used to represent no data in output rasters
+      arm_length_meters: detector arm length (meters)
+      dl_for_arms_meters: distance between sample points (meters)
+      opening_angle_degrees: detector opening angle (degrees)
+      rotation_angle_degrees: rotation (degrees) of detector vs. proj x-y axes
+      vertex_x: vertex x coordinate (in units of x-y projection, assumed meters)
+      vertex_y: vertex y coordinate (in units of x-y projection, assumed meters)
+      opening_angle_i: which angle corresponds to opening_angle_degrees
+      rotation_angle_j: which angle corresponds to rotation_angle_j
+      vertex_row: row of a grid of vertex positions corresponding to vertex_y
+      vertex_col: column of a grid of vertex positions corresponding to vertex_x
+    Note: opening_angle_i, rotation_angle_j, vertex_row, vertex_col are provided
+    only so they can be returned, so results can be assembled in to an array
+    asynchronously.
+ 
+    Output:
+      scores: dict containing all input parameters except raster_file_dict,
+              as well as the scores returned by
+              suitability_scores(include_pixel_data=False).
+    """
+    detector_arm_list = Detector.detector(
+        arm_length_meters,
+        dl_for_arms_meters,
+        opening_angle_degrees,
+        rotation_angle_degrees,
+        vertex_x,
+        vertex_y,
+        asterisk_number_of_rotation_angles=number_of_rotation_angs)
+
+    try:
+        pixel_data_asterisk = pixel_data_from_rasters_asterisk(
+            raster_paths,
+            detector_arm_list,
+            use_shared_memory=use_shared_memory,
+            shared_memory_info=shared_memory_info)
+        paired_detectors = Detector.pair_arm_coords(detector_arm_list)
+        paired_pixel_data_asterisk = Detector.pair_raster_coords(
+            pixel_data_asterisk, opening_angle_degrees=opening_angle_degrees)
+        scores = suitability_scores_asterisk(paired_pixel_data_asterisk,
+                                             paired_detectors, no_data_value,
+                                             include_pixel_data,
+                                             shapefiles_paths)
+    except Exception as error:
+        print('\nUnexpected error in scoring detector list\n', error)
+        result = [
+            build_result_dict(arm_length_meters, dl_for_arms_meters,
+                              opening_angle_degrees,
+                              det["rotation_angle_degrees"], vertex_x,
+                              vertex_y, opening_angle_i, rotation_angle_j,
+                              vertex_row, vertex_col,
+                              nodata_scores(no_data_value))
+            for det in paired_detectors
+        ]
+        print("Detector list that failed:")
+        print(result)
+        print("continuing, reporting no data for this detector\n\n")
+        return result
+
+    return [
+        build_result_dict(arm_length_meters, dl_for_arms_meters,
+                          opening_angle_degrees, det["rotation_angle_degrees"],
+                          vertex_x, vertex_y, opening_angle_i,
+                          rotation_angle_j, vertex_row, vertex_col, score)
+        for det, score in zip(paired_detectors, scores)
+    ]

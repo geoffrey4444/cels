@@ -13,11 +13,21 @@ from concurrent.futures import ProcessPoolExecutor, wait, as_completed
 from CosmicExplorerLocationSearch import Coordinates, Detector, Score
 
 
-def evaluate_region(x_center, y_center, width_meters, height_meters,
-                    grid_downsample_factor, arm_length_meters,
-                    dl_for_arms_meters, opening_angles,
-                    number_of_rotation_angles, max_total_score_for_L_out,
-                    path_for_output, njobs, raster_info, shapefiles_paths):
+def evaluate_region(x_center,
+                    y_center,
+                    width_meters,
+                    height_meters,
+                    grid_downsample_factor,
+                    arm_length_meters,
+                    dl_for_arms_meters,
+                    opening_angles,
+                    number_of_rotation_angles,
+                    max_total_score_for_L_out,
+                    path_for_output,
+                    njobs,
+                    raster_info,
+                    shapefiles_paths,
+                    asterisk=False):
     """Evaluate the suitability of a 2D grid of detectors placed in a 
     rectangular region such that they are evenly spaced horizontally
     and vertically. Uses the projection of the provided elevation map for
@@ -54,7 +64,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                          * "landcover" = path to landcover raster
                          * "land_acquisition" = path to land acquisition raster
       shapefiles_paths: dict. containing shapefiles paths
-                        *"roads" = path to roads shapefile               
+                        *"roads" = path to roads shapefile  
+      asterisk: if true, use asterisk optimzation method     
     
     Output:
       * One geotiff for each score returned for each detector, with pixel
@@ -118,7 +129,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     grid_cols = detector_xs.shape[0]
     grid_rows = detector_ys.shape[0]
     number_of_opening_angles = np.shape(opening_angles)[0]
-    rotation_angles = np.arange(0.0, 360.0, 360 // number_of_rotation_angles)
+    rotation_angles = np.linspace(0.0, 360.0, number_of_rotation_angles, endpoint=False)
     if (rotation_angles.shape[0] != number_of_rotation_angles):
         print("ERROR! Shape of rotation_angles incorrect")
 
@@ -128,7 +139,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
         import CosmicExplorerLocationSearch.Geotiff as Geotiff
         shared_memory_info = {}
         for raster_type, raster_path in raster_info["paths"].items():
-            shared_memory_info[raster_type] = Geotiff.read_bsq_to_shared_memory(raster_path)
+            shared_memory_info[
+                raster_type] = Geotiff.read_bsq_to_shared_memory(raster_path)
         print(f"Loaded {len(shared_memory_info)} rasters into shared memory")
 
     # Set up arrays to hold the results
@@ -171,7 +183,7 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     print("Shape of total score array:")
     print(result["total_score"].shape)
 
-    # Submitting every task in one go led to excessive memory usage that 
+    # Submitting every task in one go led to excessive memory usage that
     # prevented a national search with ~500M tasks from completing.
     # One attempt to limit memory usage is dividing the tasks into rounds,
     # with only tasks_each_round futures in memory at a time. Memory usage
@@ -179,16 +191,26 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     # be able to further improve memory usage.
     tasks_each_round = 100000
     tasks_done = 0
-    func_to_call = Score.score_detector_from_grid
-    # params_for_futures is a generator expression. It only evaluates
-    # when you loop over it. When you loop over it, looped over items are
-    # automatically removed from the generator expression.
-    params_for_futures = ((raster_info["paths"], shapefiles_paths, raster_info["no_data_value"],
-                           arm_length_meters, dl_for_arms_meters,
-                           opening_angle, rotation_angle, x, y, i, j, row, col,
-                           raster_info["use_shared_memory"], shared_memory_info)
+    tasks_failed = 0
+
+    func_to_call = (Score.score_detector_from_grid_asterisk
+                    if asterisk else Score.score_detector_from_grid)
+
+    if asterisk:
+        rotation_iter = [(0, 0)]
+        extra_args = (number_of_rotation_angles, False)
+    else:
+        rotation_iter = list(enumerate(rotation_angles))
+        extra_args = ()
+
+    params_for_futures = ((raster_info["paths"], shapefiles_paths,
+                           raster_info["no_data_value"], arm_length_meters,
+                           dl_for_arms_meters, opening_angle, rotation_angle,
+                           x, y, i, j, row, col, *extra_args,
+                           raster_info["use_shared_memory"],
+                           shared_memory_info)
                           for i, opening_angle in enumerate(opening_angles)
-                          for j, rotation_angle in enumerate(rotation_angles)
+                          for j, rotation_angle in rotation_iter
                           for row, y in enumerate(detector_ys)
                           for col, x in enumerate(detector_xs))
 
@@ -213,41 +235,41 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
             # threads (and thus only the futures can run on different cores).
             # There is just one result dict, and it lives on the main thread.
             for future in as_completed(futures):
-                score = future.result()
-                score_i = score["opening_angle_i"]
-                score_j = score["rotation_angle_j"]
-                score_row = score["vertex_row"]
-                score_col = score["vertex_col"]
-
-                result["opening_angle_degrees"][score_i][score_j][score_row][
-                    score_col] = score["opening_angle_degrees"]
-                result["rotation_angle_degrees"][score_i][score_j][score_row][
-                    score_col] = score["rotation_angle_degrees"]
-                result["vertex_x"][score_i][score_j][score_row][
-                    score_col] = score["vertex_x"]
-                result["vertex_y"][score_i][score_j][score_row][
-                    score_col] = score["vertex_y"]
-                result["elevation_score"][score_i][score_j][score_row][
-                    score_col] = score["elevation_score"]
-                result["tilt_score"][score_i][score_j][score_row][
-                    score_col] = score["tilt_score"]
-                result["landcover_score"][score_i][score_j][score_row][
-                    score_col] = score["landcover_score"]
-                result["land_acquisition_score"][score_i][score_j][score_row][
-                    score_col] = score["land_acquisition_score"]
-                result["roads_score"][score_i][score_j][score_row][
-                    score_col] = score["roads_score"]
-                result["total_score_m_lacq"][score_i][score_j][score_row][
-                    score_col] = score["total_score_m_lacq"]
-                result["total_score"][score_i][score_j][score_row][
-                    score_col] = score["total_score"]
-                tasks_done += 1
+                try:
+                    result_item = future.result()
+                    scores = result_item if asterisk else [result_item]
+                    for score in scores:
+                        score_i = score["opening_angle_i"]
+                        score_j = (int(
+                            round(score["rotation_angle_degrees"] /
+                                  (360.0 / number_of_rotation_angles)))
+                                   if asterisk else score["rotation_angle_j"])
+                        score_row = score["vertex_row"]
+                        score_col = score["vertex_col"]
+                        for key in ("opening_angle_degrees",
+                                    "rotation_angle_degrees", "vertex_x",
+                                    "vertex_y", "elevation_score",
+                                    "tilt_score", "landcover_score",
+                                    "land_acquisition_score", "roads_score",
+                                    "total_score_m_lacq", "total_score"):
+                            result[key][score_i][score_j][score_row][
+                                score_col] = score[key]
+                        tasks_done += 1
+                except Exception as e:
+                    tasks_failed += 1
+                    import traceback
+                    print(
+                        f"WARNING: worker task failed: {type(e).__name__}: {e}",
+                        flush=True)
+                    traceback.print_exc()
+                    sys.stdout.flush()
 
                 # Submit as many futures as done futures obtained.
                 # Note: the params we already looped over are no longer in
                 # params_for_futures, because generator expressions drop
                 # cases after you loop over them automatically.
-                # Also remove the completed future
+                # Also remove the completed future.
+
                 futures.pop(future)
                 for params in itertools.islice(params_for_futures, 1):
                     # .update takes a dict and adds/overwrites key/value pairs
@@ -258,6 +280,10 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
             print(
                 str(datetime.now()) + " -- " + str(tasks_done) +
                 " tasks complete")
+            if tasks_failed > 0:
+                print(
+                    str(datetime.now()) + " -- " + str(tasks_failed) +
+                    " tasks failed")
             sys.stdout.flush()
 
     # Output geotiffs, finding best (smallest) score over opening and rotation
@@ -285,13 +311,13 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
         np.log10(eps +
                  np.min(np.min(result["landcover_score"], axis=0), axis=0)),
         axis=0)
-    best_land_acquisition = np.flip(
-        np.log10(eps +
-                 np.min(np.min(result["land_acquisition_score"], axis=0), axis=0)),
-        axis=0)
+    best_land_acquisition = np.flip(np.log10(
+        eps +
+        np.min(np.min(result["land_acquisition_score"], axis=0), axis=0)),
+                                    axis=0)
     best_total_m_lacq = np.flip(np.log10(
         np.min(np.min(result["total_score_m_lacq"], axis=0), axis=0)),
-                         axis=0)
+                                axis=0)
     best_total = np.flip(np.log10(
         np.min(np.min(result["total_score"], axis=0), axis=0)),
                          axis=0)
@@ -304,15 +330,19 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
     eps_for_log = 1.e-6
     print("No data = " + str(no_data) + " log10(no data * big factor) = " +
           str(log10_no_data_times_big_factor))
-    best_elevation[np.abs(best_elevation -
-                          log10_no_data_times_big_factor) < eps_for_log] = no_data
-    best_tilt[np.abs(best_tilt - log10_no_data_times_big_factor) < eps_for_log] = no_data
-    best_landcover[np.abs(best_landcover -
-                          log10_no_data_times_big_factor) < eps_for_log] = no_data
+    best_elevation[np.abs(best_elevation - log10_no_data_times_big_factor) <
+                   eps_for_log] = no_data
+    best_tilt[np.abs(best_tilt -
+                     log10_no_data_times_big_factor) < eps_for_log] = no_data
+    best_landcover[np.abs(best_landcover - log10_no_data_times_big_factor) <
+                   eps_for_log] = no_data
     best_land_acquisition[np.abs(best_land_acquisition -
-                          log10_no_data_times_big_factor) < eps_for_log] = no_data
-    best_total_m_lacq[np.abs(best_total - log10_no_data_times_big_factor) < eps_for_log] = no_data
-    best_total[np.abs(best_total - log10_no_data_times_big_factor) < eps_for_log] = no_data
+                                 log10_no_data_times_big_factor) <
+                          eps_for_log] = no_data
+    best_total_m_lacq[np.abs(best_total - log10_no_data_times_big_factor) <
+                      eps_for_log] = no_data
+    best_total[np.abs(best_total -
+                      log10_no_data_times_big_factor) < eps_for_log] = no_data
 
     with rio.open(path_for_output + "/elevation_score.tif", "w",
                   **out_profile) as out_geofile:
@@ -359,8 +389,8 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                             result["tilt_score"][i][j][row][col]) + " "
                         row_text += str(
                             result["landcover_score"][i][j][row][col]) + " "
-                        row_text += str(
-                            result["land_acquisition_score"][i][j][row][col]) + " "
+                        row_text += str(result["land_acquisition_score"][i][j]
+                                        [row][col]) + " "
                         row_text += str(
                             result["roads_score"][i][j][row][col]) + " "
                         row_text += str(
@@ -394,22 +424,26 @@ def evaluate_region(x_center, y_center, width_meters, height_meters,
                                     detector_scores))
 
     # Finally, write the shape file
+    print(f"Number of detectors to write: {len(detectors)}")
     print(str(datetime.now()) + " -- Outputting shapefiles")
     Detector.write_shapefile_of_detectors(
         detectors, path_for_output + "/best_detectors.shp")
-    
+
     # Clean up shared memory if used
     if shared_memory_info is not None:
         import multiprocessing.shared_memory as shared_memory
         for raster_type, shm_info in shared_memory_info.items():
             try:
-                shm = shared_memory.SharedMemory(name=shm_info["shared_data_name"])
+                shm = shared_memory.SharedMemory(
+                    name=shm_info["shared_data_name"])
                 shm.close()
                 shm.unlink()
             except Exception as e:
-                print(f"Warning: Could not clean up shared memory for {raster_type}: {e}")
+                print(
+                    f"Warning: Could not clean up shared memory for {raster_type}: {e}"
+                )
         print("Cleaned up shared memory")
-    
+
     print(str(datetime.now()) + " -- Complete!")
 
 
@@ -418,7 +452,7 @@ def evaluate_region_lon_lat(lon_center, lat_center, width_meters,
                             arm_length_meters, dl_for_arms_meters,
                             opening_angles, number_of_rotation_angles,
                             max_total_score_for_L_out, path_for_output, njobs,
-                            raster_info, shapefile_paths):
+                            raster_info, shapefile_paths, asterisk):
     """Wrapper for evaluate_region() that takes lon, lat instead of x,y for the
     center of the rectangular search region.
     Input:
@@ -436,7 +470,7 @@ def evaluate_region_lon_lat(lon_center, lat_center, width_meters,
                            dl_for_arms_meters, opening_angles,
                            number_of_rotation_angles,
                            max_total_score_for_L_out, path_for_output, njobs,
-                           raster_info, shapefile_paths)
+                           raster_info, shapefile_paths, asterisk)
 
 
 def main():
@@ -480,7 +514,8 @@ def main():
                    help="Number of rotation angles")
     p.add_argument('--elevation', help="Path to elevation geotiff")
     p.add_argument('--landcover', help="Path to landcover geotiff")
-    p.add_argument('--land_acquisition', help="Path to land acquisition cost geotiff")
+    p.add_argument('--land_acquisition',
+                   help="Path to land acquisition cost geotiff")
     p.add_argument('--roads', help="Path to roads shapefile")
     p.add_argument('--outscore',
                    type=float,
@@ -489,12 +524,30 @@ def main():
     p.add_argument('--njobs',
                    type=int,
                    help="Number of jobs to run in parallel")
-    p.add_argument('--use-shared-memory',
-                   action='store_true',
-                   help="Use shared memory for raster data instead of reading from files")
+    p.add_argument(
+        '--use-shared-memory',
+        action='store_true',
+        help="Use shared memory for raster data instead of reading from files")
+    p.add_argument(
+        '--asterisk',
+        action='store_true',
+        help=
+        "Enable asterisk sampling for sampling raster data on detector arms. Only calls asterisk method when flag is provided"
+    )
     args = p.parse_args()
     print(Score.__file__)
     print(args)
+
+    if args.asterisk:
+        for opening_angle in args.opening_angle:
+            next_arm = opening_angle * args.rotation_angles / 360.0
+            if abs(next_arm - round(next_arm)) > 1e-9:
+                raise ValueError(
+                    f"opening_angle {opening_angle} must be a multiple of the "
+                    f"arm spacing (360 / rotation_angles = "
+                    f"{360.0 / args.rotation_angles}) when using --asterisk, "
+                    f"but {opening_angle} * {args.rotation_angles} / 360 = "
+                    f"{next_arm}.")
 
     # Create dictionary of raster data and transforms. This happens once on each
     # process.
@@ -507,18 +560,22 @@ def main():
         "paths": None,
         "use_shared_memory": args.use_shared_memory
     }
-    shapefiles_paths = {
-        "roads": None
-    }
+    shapefiles_paths = {"roads": None}
 
     # Check file extensions if using shared memory
     if args.use_shared_memory:
         if not args.elevation.endswith('.bsq'):
-            raise ValueError("When using --use-shared-memory, elevation file must have .bsq extension")
+            raise ValueError(
+                "When using --use-shared-memory, elevation file must have .bsq extension"
+            )
         if not args.landcover.endswith('.bsq'):
-            raise ValueError("When using --use-shared-memory, landcover file must have .bsq extension")
+            raise ValueError(
+                "When using --use-shared-memory, landcover file must have .bsq extension"
+            )
         if not args.land_acquisition.endswith('.bsq'):
-            raise ValueError("When using --use-shared-memory, land acquisition file must have .bsq extension")
+            raise ValueError(
+                "When using --use-shared-memory, land acquisition file must have .bsq extension"
+            )
 
     # Use the elevation file to determine default raster information.
     with rio.open(args.elevation) as geofile:
@@ -539,7 +596,7 @@ def main():
                             args.N, args.arm_length, args.dl,
                             np.array(args.opening_angle), args.rotation_angles,
                             args.outscore, args.outdir, args.njobs,
-                            raster_info, shapefiles_paths)
+                            raster_info, shapefiles_paths, args.asterisk)
 
 
 if __name__ == '__main__':
