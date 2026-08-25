@@ -499,6 +499,25 @@ def test_elevation_and_tilt_score():
         "expected_max_cut_vol_meters^3"] * detector[
             "dl_for_arms_meters"] - eps_for_max_cut
 
+def test_roads_score():
+    #This function tests the "explode" function in the roads score.
+    #If the function returns any multipoints, it fails. It passes if all crossings are 
+    #single points. This needs specific files and coordinates rather than random.
+
+    roads_path = 'tests/test_images/Test_roads_sample_4km.shp'
+    arm_length_meters = 2000 
+    dl_arm_meters = 100 
+    rotation_angle = 0
+    opening_angle = 90 
+    X_cs, Y_cs =1640551,1968957
+
+    detector = Detector.detector(arm_length_meters, dl_arm_meters ,opening_angle , rotation_angle, X_cs, Y_cs, None)
+
+    roads_score = Score.roads_scores(detector, roads_shapefile_path=roads_path)
+    crossings = roads_score['crossings']
+    assert (crossings.geometry.geom_type == 'Point').all(), "Some multi-point road crossings are present"
+
+
 
 def test_suitability_scores():
     temp_dir = tempfile.TemporaryDirectory()
@@ -545,6 +564,7 @@ def test_suitability_scores():
     pix_data = Score.pixel_data_from_rasters(rasters, detector)
 
     scores = Score.suitability_scores(rasters, shapefiles, no_data_value, detector, True)
+    
 
     eps_pix_data = 1.e-12
     assert scores['total_score_m_lacq'] == scores["elevation_score"] + scores[
@@ -642,8 +662,9 @@ def test_suitability_scores():
         if key == "pixel_data":
             continue  # score_detector_from_grid() does not return pixel data
         if key == "crossings_data":
-            continue  # score_detector_from_grid() does not roads crossings data
+            continue  # score_detector_from_grid() does not return road crossings data
         assert result[key] == scores[key]
+
 
 
 def worker_process_shared_memory(shm_name, transform, nodata_value, detector,

@@ -531,10 +531,13 @@ def roads_scores(detector, roads_shapefile_path=None, roads_geodataframe=None):
     detector_df = gpd.GeoDataFrame(
         geometry=[Detector.detector_to_multiline_string(detector)],
         crs='EPSG:5070')
-    crossings = gpd.overlay(roads,
+    crossings_multipoint = gpd.overlay(roads,
                             detector_df,
                             how='intersection',
                             keep_geom_type=False)
+    crossings = crossings_multipoint.explode(ignore_index=True)
+    #Exploding the dataframe to turn any multipoints into single points, 
+    #therefore counting all crossings.
     score_roads = 0
     for c in crossings.itertuples():
         score_roads += road_score_by_type[c.RTTYP]
